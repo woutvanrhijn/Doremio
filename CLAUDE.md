@@ -138,3 +138,27 @@ https://github.com/woutvanrhijn/Doremio
 - Geen hardware, enkel digitaal platform
 - Academische onderbouwing blijft belangrijk naast het bouwen
 - Vibecoding aanpak: Claude schrijft code, Wout stuurt bij
+## Ontwikkelstrategie (aangepast)
+
+### Fase 1 — Functioneel (nu bezig)
+Bouwen zonder focus op visuele afwerking.
+Prioriteit: alles moet werken.
+1. Authenticatie en onboarding ✅
+2. Partituur uploaden en annoteren
+3. Oefensessie starten en opnemen
+4. Leraarsdashboard en observatie
+5. Voortgang en gamificatie
+6. Profiel en community
+
+### Fase 2 — Design (na kernfunctionaliteit)
+Per scherm een volwaardige mockup maken in Doremio stijl.
+- Wout ontwerpt illustraties en iconen in Procreate/Adobe
+- Illustraties worden als SVG/PNG geëxporteerd en ingeladen
+- Animaties via Framer Motion
+- Volledige visuele stijl per scherm implementeren
+- Referentie: here.o app niveau van afwerking
+
+### Fase 3 — Integratie en PoC demo
+- Volledige gebruikersflow testen per rol
+- Demo scenario voorbereiden
+- Documentatie afwerken voor masterproef
