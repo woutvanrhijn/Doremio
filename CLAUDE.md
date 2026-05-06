@@ -189,3 +189,22 @@ Per scherm een volwaardige mockup maken in Doremio stijl.
 - Volledige gebruikersflow testen per rol
 - Demo scenario voorbereiden
 - Documentatie afwerken voor masterproef
+
+## Laatste sessie — waar we gebleven zijn
+
+### Wat werkt
+- Volledige onboarding flow student en leraar
+- PDF upload naar Supabase storage
+- Anthropic API route voor partituur herkenning
+- YouTube API route voor referentie links
+- Storage en database policies aangemaakt
+
+### Actief probleem
+- app/partituren/[id]/page.tsx heeft een build error vanaf lijn 115
+- Bestand moet volledig herschreven worden in nieuwe chat
+- Fout: "Expected a semicolon" door ontbrekende JSX tag
+
+### Volgende stap in nieuwe chat
+1. Herschrijf app/partituren/[id]/page.tsx volledig
+2. Test partituur upload volledig
+3. Bouw app/studio/[id]/page.tsx voor oefensessie
