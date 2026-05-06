@@ -46,48 +46,57 @@ export default function PartituurDetail() {
   }, [params.id, router])
 
   const zoekReferenties = async () => {
-    if (!partituur) return
-    setLoadingReferenties(true)
-    try {
-      const response = await fetch('/api/zoek-referenties', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          titel: partituur.titel,
-          componist: partituur.componist
-        })
+  if (!partituur) return
+  setLoadingReferenties(true)
+  try {
+    console.log('Zoeken naar:', partituur.titel, partituur.componist)
+    const response = await fetch('/api/zoek-referenties', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        titel: partituur.titel,
+        componist: partituur.componist
       })
-      const data = await response.json()
-      setReferenties(data.links)
-      await supabase
-        .from('partituren')
-        .update({ referentie_url: JSON.stringify(data.links) })
-        .eq('id', partituur.id)
-    } catch (e) {
-      console.error(e)
-    }
-    setLoadingReferenties(false)
+    })
+    console.log('Response status:', response.status)
+    const data = await response.json()
+    console.log('Data:', data)
+    setReferenties(data.links || [])
+    await supabase
+      .from('partituren')
+      .update({ referentie_url: JSON.stringify(data.links) })
+      .eq('id', partituur.id)
+  } catch (e) {
+    console.error('Fout bij zoeken:', e)
   }
+  setLoadingReferenties(false)
+}
 
   const slaAnnotatieOp = async () => {
-    if (!annotatie.trim()) return
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+  if (!annotatie.trim()) return
+  console.log('Annotatie opslaan...')
+  const { data: { user } } = await supabase.auth.getUser()
+  console.log('User:', user?.id)
+  if (!user) return
 
-    const { error } = await supabase.from('annotaties').insert({
-      partituur_id: partituur.id,
-      auteur_id: user.id,
-      inhoud: annotatie,
-      type: rol === 'leraar' ? 'leraar' : 'student'
-    })
+  const { data, error } = await supabase.from('annotaties').insert({
+    partituur_id: partituur.id,
+    auteur_id: user.id,
+    inhoud: annotatie,
+    type: rol === 'leraar' ? 'leraar' : 'student'
+  })
 
-    if (error) {
-      console.error('Fout:', error.message)
-      return
-    }
+  console.log('Annotatie data:', data)
+  console.log('Annotatie error:', error)
 
-    setAnnotatie('')
+  if (error) {
+    console.error('Fout:', error.message)
+    return
   }
+
+  setAnnotatie('')
+  alert('Annotatie opgeslagen!')
+}
 
   const startOefensessie = () => {
     router.push(`/studio/${partituur.id}`)
@@ -159,8 +168,8 @@ export default function PartituurDetail() {
               Referentie videos
             </h2>
             <button
-              onClick={zoekReferenties}
-              disabled={loadingReferenties}
+  onClick={zoekReferenties}
+  disabled={loadingReferenties}
               className="text-sm px-3 py-1 rounded-lg"
               style={{ backgroundColor: '#F3E7DD', color: '#0766C6' }}>
               {loadingReferenties ? 'Zoeken...' : 'Zoek'}
