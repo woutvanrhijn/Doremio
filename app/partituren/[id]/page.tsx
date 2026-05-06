@@ -114,7 +114,6 @@ export default function PartituurDetail() {
   return (
     <main className="min-h-screen px-6 py-10"
       style={{ backgroundColor: '#F3E7DD' }}>
-
       <div className="max-w-lg mx-auto">
 
         <button
@@ -135,7 +134,7 @@ export default function PartituurDetail() {
             </p>
           )}
           {partituur.bestand_url && (
-            
+            <a
               href={partituur.bestand_url}
               target="_blank"
               rel="noopener noreferrer"
@@ -167,7 +166,6 @@ export default function PartituurDetail() {
               {loadingReferenties ? 'Zoeken...' : 'Zoek'}
             </button>
           </div>
-
           {referenties.length === 0 ? (
             <p className="text-sm" style={{ color: '#888' }}>
               Nog geen referentie videos. Klik op zoek om er te vinden.
@@ -175,7 +173,7 @@ export default function PartituurDetail() {
           ) : (
             <div className="flex flex-col gap-3">
               {referenties.map((ref: any, i: number) => (
-                
+               <a 
                   key={i}
                   href={ref.url}
                   target="_blank"
