@@ -58,6 +58,33 @@ van leerwinst."
 - Student voegt eigen notities toe
 - Referentie-audio koppeling: manueel via URL (YouTube etc.) of IMSLP
 - Als geen opname beschikbaar: koppeling aan externe database
+### 1. De Partituur — volledig overzicht
+
+**Upload — twee wegen:**
+- Weg A: PDF upload door leraar of student
+- Weg B: Foto via camera → automatisch verbeterd → omgezet naar PDF
+
+**AI verrijking na upload:**
+- Anthropic API herkent titel en componist
+- YouTube API zoekt 2-3 tutorials en uitvoeringen
+- Spotify link indien beschikbaar
+- Leraar keurt links goed, verwijdert of voegt toe
+
+**Annotaties door leraar:**
+- Globale tekstinstructie
+- Eigen audio/video opname via platform
+- Specifieke opmerkingen per sectie (optioneel)
+- Leraar krijgt notificatie bij studentupload en kan annotaties toevoegen
+
+**Toewijzing:**
+- Leraar wijst toe aan individuele student of klasgroep
+- Student uploadt zelf → automatisch eigen profiel
+- Leraar ontvangt notificatie bij studentupload
+
+**Benodigde API sleutels:**
+- Anthropic API (titel/componist herkenning + link curatie)
+- YouTube Data API (referentie-links)
+- Spotify API (muzieklinks)
 
 ### 2. De Studio (oefensessie)
 - Student start sessie vanuit een partituur
