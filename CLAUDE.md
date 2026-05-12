@@ -4,19 +4,19 @@
 Masterproef van Wout van Rhijn, 2MA Productontwikkeling 2025/26, PXL.
 Begeleider: Jouke Verlinden.
 
-Het probleem: In het Vlaams DKO (Deeltijds Kunstonderwijs) bedraagt de 
-doorstroom van graad 2 naar graad 3 slechts 34-35%. Hoofdoorzaken zijn 
-motivatieverlies, gebrek aan leerstrategieën en een zwakke muzikale 
+Het probleem: In het Vlaams DKO (Deeltijds Kunstonderwijs) bedraagt de
+doorstroom van graad 2 naar graad 3 slechts 34-35%. Hoofdoorzaken zijn
+motivatieverlies, gebrek aan leerstrategieën en een zwakke muzikale
 identiteit. De wekelijkse contactmomenten worden onvoldoende overbrugd.
 
-Doremio is GEEN hardware product. Het is uitsluitend een digitaal 
+Doremio is GEEN hardware product. Het is uitsluitend een digitaal
 leer- en speelplatform.
 
 ## Productdefinitie
-"Een geïntegreerd digitaal leer- en speelplatform dat binnen DKO-muziek 
-ondersteuning biedt aan studenten met betrekking tot zelfstandig oefenen, 
-leerstrategieën en muzikale identiteitsvorming. Anderzijds ondersteunt het 
-lerarenteams in het overbruggen van contactmomenten en het maximaliseren 
+"Een geïntegreerd digitaal leer- en speelplatform dat binnen DKO-muziek
+ondersteuning biedt aan studenten met betrekking tot zelfstandig oefenen,
+leerstrategieën en muzikale identiteitsvorming. Anderzijds ondersteunt het
+lerarenteams in het overbruggen van contactmomenten en het maximaliseren
 van leerwinst."
 
 ## Theoretisch raamwerk
@@ -38,66 +38,46 @@ van leerwinst."
 - Supabase (PostgreSQL database, authenticatie, bestandsopslag, realtime)
 - Framer Motion (animaties — nog te installeren)
 - Deployment: Vercel (nog te doen)
-- AI integratie: Anthropic API (nog te integreren)
+- AI integratie: Anthropic API (claude-opus-4-6)
+- YouTube Data API v3
+- Spotify API (nog te integreren)
 
 ## Kleurenpalet en stijl
 - Primair blauw: #0766C6
-- Accent oranje: #FF560D  
+- Accent oranje: #FF560D
 - Warm wit: #F3E7DD (hoofdachtergrond van het volledige platform)
 - Geel accent: #FFD100
 - Sfeer: zoals Duolingo — speels, educatief, vol leven maar dan met muziek
-- Animaties via Framer Motion
+- Animaties via Framer Motion (nog te installeren)
 - Custom illustraties via Procreate/Adobe (nog te maken door Wout)
 - Visuele identiteit: uitgesproken en herkenbaar
+- Responsive: werkt op smartphone, iPad en laptop
 
 ## Vijf functionele clusters
+
 ### 1. De Partituur (kern object)
-- Leraar uploadt PDF/afbeelding van partituur
-- Leraar voegt globale annotaties toe: tekst, audionotitie, oefenmethode
-- Mogelijkheid tot positiegebonden annotaties op specifieke plekken
+- Leraar uploadt PDF of foto van partituur
+- AI herkent automatisch titel en componist via Anthropic API
+- YouTube zoekt automatisch uitvoeringen (2-12 min) en Shorts (≤60 sec)
+- Leraar voegt annotaties toe: tekst, audio-opname, instructies
+- Leraar kan eigen audio opnemen of uploaden als referentie
 - Student voegt eigen notities toe
-- Referentie-audio koppeling: manueel via URL (YouTube etc.) of IMSLP
-- Als geen opname beschikbaar: koppeling aan externe database
-### 1. De Partituur — volledig overzicht
-
-**Upload — twee wegen:**
-- Weg A: PDF upload door leraar of student
-- Weg B: Foto via camera → automatisch verbeterd → omgezet naar PDF
-
-**AI verrijking na upload:**
-- Anthropic API herkent titel en componist
-- YouTube API zoekt 2-3 tutorials en uitvoeringen
-- Spotify link indien beschikbaar
-- Leraar keurt links goed, verwijdert of voegt toe
-
-**Annotaties door leraar:**
-- Globale tekstinstructie
-- Eigen audio/video opname via platform
-- Specifieke opmerkingen per sectie (optioneel)
-- Leraar krijgt notificatie bij studentupload en kan annotaties toevoegen
-
-**Toewijzing:**
-- Leraar wijst toe aan individuele student of klasgroep
-- Student uploadt zelf → automatisch eigen profiel
-- Leraar ontvangt notificatie bij studentupload
-
-**Benodigde API sleutels:**
-- Anthropic API (titel/componist herkenning + link curatie)
-- YouTube Data API (referentie-links)
-- Spotify API (muzieklinks)
+- Leraar wijst partituur toe aan student of klas
 
 ### 2. De Studio (oefensessie)
 - Student start sessie vanuit een partituur
-- Stap-voor-stap begeleiding via aanwijzingen van leraar
-- Opname via microfoon/camera van eigen toestel
-- Automatische logging: datum, duur, gekoppelde partituur
-- Opname wordt opgeslagen en gekoppeld aan partituur
+- Briefing met challenges van leraar (game-achtig)
+- Toggle menu: student kiest welke elementen zichtbaar zijn
+- Opname via microfoon, timer, visuele metronoom
+- Tijdstempel annotaties op eigen opname
+- Reflectie met 3 vragen + gamification elementen
+- AI feedback op basis van reflectie (tops/tips/motivatie)
+- Sessie gelogd in Supabase met datum, duur, opname, feedback
 
 ### 3. Het Venster (observatie en bijsturing)
 - Leraar ziet wanneer, hoe lang en wat er geoefend werd
 - Laagdrempelige reactie: duim, korte tekstnotitie, audio-reactie
 - Ouder ziet vereenvoudigde versie van activiteit kind
-- Medestudenten kunnen beperkt betrokken worden
 - Geen volwaardig berichtensysteem — transparantielaag
 
 ### 4. Het Parcours (voortgang en gamificatie)
@@ -115,96 +95,154 @@ van leerwinst."
 - Versterkt transitie van "leerling" naar "muzikant"
 
 ## Supabase database tabellen
+
 ```sql
+-- Originele tabellen
 profiles (id, role, naam, instrument, academie, avatar_url, created_at)
 klassen (id, naam, leraar_id, created_at)
 klas_studenten (klas_id, student_id)
-partituren (id, titel, componist, bestand_url, referentie_url, leraar_id, klas_id, created_at)
+partituren (id, titel, componist, bestand_url, referentie_url, leraar_audio_url, leraar_id, klas_id, created_at)
 annotaties (id, partituur_id, auteur_id, inhoud, audio_url, type, created_at)
-oefensessies (id, student_id, partituur_id, duur, opname_url, notities, created_at)
+oefensessies (id, student_id, partituur_id, duur, opname_url, notities, doel, tops, tips, ai_feedback, bpm, status, created_at)
 feedback (id, sessie_id, auteur_id, inhoud, audio_url, type, created_at)
+
+-- Nieuwe tabel toegevoegd
+opname_annotaties (id, opname_url, auteur_id, partituur_id, tijdstip, inhoud, created_at)
 ```
+
 Row Level Security is ingeschakeld op alle tabellen.
 
-## Wat al gebouwd is
-- ✅ Next.js project aangemaakt en draait op localhost:3000
-- ✅ Supabase gekoppeld via lib/supabase.ts
-- ✅ .env.local met credentials (nooit naar GitHub)
-- ✅ Alle database tabellen aangemaakt in Supabase
-- ✅ Landingspagina met rolkeuze (app/page.tsx)
-- ✅ Login/registratie pagina (app/auth/login/page.tsx)
-- ✅ GitHub repository opgezet
+### Supabase Storage buckets
+- `partituren` — PDF bestanden en leraar audio uploads
+- `opnames` — student opnames van oefensessies
 
-## Wat nog gebouwd moet worden (prioriteit volgorde)
-1. Auth callback pagina (app/auth/callback/route.ts)
-2. Rol-selectie na registratie (app/onboarding/page.tsx)
-3. Dashboard per rol (app/dashboard/page.tsx)
-4. Partituur uploaden en bekijken
-5. Annotaties toevoegen aan partituur
-6. Oefensessie starten en opnemen
-7. Leraarsdashboard met overzicht studenten
-8. Feedback geven op sessies
-9. Voortgang en gamificatie
-10. Profiel en community
+## Bestandsstructuur
+## Bestandsstructuur
 
+```
+app/
+  page.tsx                          — landingspagina met rolkeuze
+  layout.tsx
+  globals.css
+  auth/
+    callback/route.ts               — auth callback
+    login/page.tsx                  — login + registratie
+    registreren/page.tsx
+  onboarding/
+    rol/page.tsx                    — rolkeuze na registratie
+    profiel/page.tsx                — profielinvulling
+    welkom/page.tsx                 — welkomstscherm
+  dashboard/
+    page.tsx                        — dashboard per rol met echte data
+  partituren/
+    page.tsx                        — overzichtslijst partituren
+    nieuw/page.tsx                  — upload flow PDF + foto
+    [id]/page.tsx                   — detailpagina met PDF viewer + referenties
+  studio/
+    [id]/page.tsx                   — volledige oefenstudio
+  api/
+    herken-partituur/route.ts       — Anthropic API: titel/componist herkenning
+    zoek-referenties/route.ts       — YouTube API: uitvoeringen + Shorts
+    studio-feedback/route.ts        — Anthropic API: AI reflectie feedback
+lib/
+  supabase.ts                       — Supabase client
+```
+## Wat al gebouwd is ✅
+
+### Authenticatie & onboarding
+- Next.js project op localhost:3000
+- Supabase gekoppeld via lib/supabase.ts
+- .env.local met API keys (nooit naar GitHub)
+- Landingspagina met rolkeuze
+- Login/registratie pagina
+- Auth callback route
+- Volledige onboarding flow student + leraar
+
+### Cluster 1 — De Partituur
+- PDF + foto upload naar Supabase storage
+- AI-herkenning titel/componist via Anthropic API
+  → Werkt correct maar vereist Anthropic credits
+  → Bij lege credits: velden manueel invullen
+- YouTube uitvoeringen (2-12 min) gefilterd op duur
+- YouTube Shorts (≤60 sec) via #shorts query
+- Beide categorieën parallel opgehaald en apart weergegeven
+- Annotaties opslaan + weergeven (leraar vs student gescheiden)
+- Partiturenlijst met uploader + datum + gekleurde bovenrand
+- Detailpagina met inline PDF viewer (standaard open)
+- Dashboard met echte Supabase data, uploadersnamen, recente partituren
+
+### Cluster 2 — De Studio
+- Volledige oefenstudio in 4 stappen:
+  - Stap 1 Briefing: partituur info + challenges van leraar (oranje game-achtige badges) + referentie audio
+  - Stap 2 Toggles: student kiest zichtbare elementen (timer/opname/challenges altijd aan, rest optioneel: partituur/metronoom/leraar track/opmerkingen)
+  - Stap 3 Sessie actief: opname start/stop/pauze, timer, visuele metronoom (rustig pulserend), PDF toggle, leraar track, tijdstempel annotaties op eigen opname
+  - Stap 4 Reflectie: 3 vragen met gamification (genummerde badges, emoji keuze voor gevoel)
+  - Stap 5 Analyse: AI feedback tops/tips/motivatie + opname terugluisteren met annotaties
+- Metronoom via Web Audio API met visuele beat indicator
+- Opname via MediaRecorder API met correcte MIME type detectie
+- Auto-stop metronoom + audio bij sessie afronden
+- AI feedback route via Anthropic API
+- Sessie + annotaties opgeslagen in Supabase
+
+## Wat nog gebouwd moet worden ❌
+
+### Prioriteit 1 — Leraar audio upload bij partituur
+- In partituren/nieuw/page.tsx: optie voor leraar om audio op te nemen via microfoon in platform
+- Trim functionaliteit (begin/einde inkorten)
+- Tijdstempel annotaties op leraar opname
+- Opslaan als leraar_audio_url in partituren tabel
+
+### Prioriteit 2 — Dashboard oefensessies uitbreiden
+- Overzicht sessies deze week: te doen / afgerond
+- Visuele activiteitsweergave (weekkalender of streaks)
+- Klikbaar naar sessiedetail
+
+### Prioriteit 3 — Het Venster (app/venster/)
+- Leraar ziet wanneer/hoe lang/wat er geoefend werd per student
+- Laagdrempelige reactie: duim omhoog, korte tekst, audio-reactie
+- Ouder ziet vereenvoudigde versie van activiteit kind
+- Geen volwaardig berichtensysteem — transparantielaag
+
+### Prioriteit 4 — Het Parcours (app/parcours/)
+- Persoonlijk groeipad student
+- Streaks bijhouden op basis van oefensessies
+- Mijlpalen en visuele progressie
+- Geen competitieve leaderboards — intrinsiek motiverend
+
+### Prioriteit 5 — Het Profiel (app/profiel/)
+- Muzikantenpagina per student
+- Instrument, favorieten, opgeslagen opnames
+- Sociaal aspect binnen academie
+
+### Later / Fase 2
+- Framer Motion animaties toevoegen
+- Vercel deployment
+- Spotify API integratie
+- Camerafunctie testen op mobiel
+- Custom illustraties van Wout integreren
+- Toewijzing partituur aan student/klas
+
+## Omgeving & API keys (.env.local)
+``` 
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+ANTHROPIC_API_KEY=...
+YOUTUBE_API_KEY=...
+```
 ## GitHub
 https://github.com/woutvanrhijn/Doremio
 
-## Hoe een nieuwe chat starten met Claude
-1. Open deze chat: https://claude.ai
-2. Begin met: "We werken samen aan mijn masterproef Doremio. 
-   Lees eerst dit projectdocument:"
-3. Plak de volledige inhoud van dit CLAUDE.md bestand
-4. Zeg daarna: "De GitHub repo is https://github.com/woutvanrhijn/Doremio. 
-   We waren bezig met [beschrijf laatste stap]."
-5. Claude heeft dan alle context om naadloos verder te werken.
-
 ## Belangrijke afspraken
-- We bouwen Weg C: design én functie tegelijk per cluster
-- PoC eerst, extra specificaties later
+- Vibecoding aanpak: Claude schrijft code, Wout stuurt bij
+- PoC eerst, visuele verfijning in Fase 2
 - Geen hardware, enkel digitaal platform
 - Academische onderbouwing blijft belangrijk naast het bouwen
-- Vibecoding aanpak: Claude schrijft code, Wout stuurt bij
-## Ontwikkelstrategie (aangepast)
+- Responsive: smartphone, iPad en laptop
+- Altijd volledige bestanden schrijven bij aanpassingen zodat copy-paste foutloos werkt
+- Bij twijfel: eerst diagnosticeren, dan pas code schrijven
 
-### Fase 1 — Functioneel (nu bezig)
-Bouwen zonder focus op visuele afwerking.
-Prioriteit: alles moet werken.
-1. Authenticatie en onboarding ✅
-2. Partituur uploaden en annoteren
-3. Oefensessie starten en opnemen
-4. Leraarsdashboard en observatie
-5. Voortgang en gamificatie
-6. Profiel en community
-
-### Fase 2 — Design (na kernfunctionaliteit)
-Per scherm een volwaardige mockup maken in Doremio stijl.
-- Wout ontwerpt illustraties en iconen in Procreate/Adobe
-- Illustraties worden als SVG/PNG geëxporteerd en ingeladen
-- Animaties via Framer Motion
-- Volledige visuele stijl per scherm implementeren
-- Referentie: here.o app niveau van afwerking
-
-### Fase 3 — Integratie en PoC demo
-- Volledige gebruikersflow testen per rol
-- Demo scenario voorbereiden
-- Documentatie afwerken voor masterproef
-
-## Laatste sessie — waar we gebleven zijn
-
-### Wat werkt
-- Volledige onboarding flow student en leraar
-- PDF upload naar Supabase storage
-- Anthropic API route voor partituur herkenning
-- YouTube API route voor referentie links
-- Storage en database policies aangemaakt
-
-### Actief probleem
-- app/partituren/[id]/page.tsx heeft een build error vanaf lijn 115
-- Bestand moet volledig herschreven worden in nieuwe chat
-- Fout: "Expected a semicolon" door ontbrekende JSX tag
-
-### Volgende stap in nieuwe chat
-1. Herschrijf app/partituren/[id]/page.tsx volledig
-2. Test partituur upload volledig
-3. Bouw app/studio/[id]/page.tsx voor oefensessie
+## Hoe een nieuwe chat starten
+1. Ga naar claude.ai → Doremio project
+2. Claude leest CLAUDE.md automatisch uit project knowledge
+3. Begin met: "We werken samen aan mijn masterproef Doremio. We waren bezig met [beschrijf laatste stap]."
+4. Claude heeft dan alle context om naadloos verder te werken.
