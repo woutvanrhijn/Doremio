@@ -8,20 +8,27 @@ const client = new Anthropic({
 export async function POST(request: NextRequest) {
   try {
     const { bestand, type } = await request.json()
-
-    const base64Data = bestand.split(',')[1]
-    const mediaType = type.startsWith('image') ? type : 'image/jpeg'
+    const base64Data = bestand.includes(',') ? bestand.split(',')[1] : bestand
 
     let content: any[]
 
     if (type === 'application/pdf') {
       content = [
         {
+          type: 'document',
+          source: {
+            type: 'base64',
+            media_type: 'application/pdf',
+            data: base64Data
+          }
+        },
+        {
           type: 'text',
-          text: 'Dit is een partituur. Geef me enkel de titel en componist terug in JSON formaat: {"titel": "...", "componist": "..."}. Als je ze niet kan vinden, geef dan lege strings terug.'
+          text: 'Dit is een muziekpartituur. Zoek de titel van het muziekstuk en de naam van de componist op de eerste pagina. Geef enkel JSON terug: {"titel": "...", "componist": "..."}. Geen andere tekst.'
         }
       ]
     } else {
+      const mediaType = type.startsWith('image/') ? type : 'image/jpeg'
       content = [
         {
           type: 'image',
@@ -33,14 +40,14 @@ export async function POST(request: NextRequest) {
         },
         {
           type: 'text',
-          text: 'Dit is een foto van een muziekpartituur. Geef me enkel de titel en componist terug in JSON formaat: {"titel": "...", "componist": "..."}. Als je ze niet kan vinden, geef dan lege strings terug. Geef enkel de JSON terug, geen andere tekst.'
+          text: 'Dit is een foto van een muziekpartituur. Zoek de titel en componist. Geef enkel JSON terug: {"titel": "...", "componist": "..."}. Geen andere tekst.'
         }
       ]
     }
 
     const message = await client.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 100,
+      max_tokens: 150,
       messages: [{ role: 'user', content }]
     })
 
@@ -50,7 +57,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(data)
   } catch (error: any) {
-    console.error(error)
+    console.error('Fout bij herkennen:', error)
     return NextResponse.json({ titel: '', componist: '' })
   }
 }

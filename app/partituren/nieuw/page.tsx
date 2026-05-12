@@ -5,12 +5,13 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
 export default function NieuwePartituur() {
-  const [stap, setStap] = useState<'keuze' | 'upload' | 'verwerken' | 'bevestigen'>('keuze')
+  const [stap, setStap] = useState<'keuze' | 'verwerken' | 'bevestigen'>('keuze')
   const [bestand, setBestand] = useState<File | null>(null)
-  const [voorvertoning, setVoorvertoning] = useState<string>('')
+  const [isPdf, setIsPdf] = useState(false)
   const [titel, setTitel] = useState('')
   const [componist, setComponist] = useState('')
   const [annotatie, setAnnotatie] = useState('')
+  const [referenties, setReferenties] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [fout, setFout] = useState('')
   const bestandInput = useRef<HTMLInputElement>(null)
@@ -19,31 +20,40 @@ export default function NieuwePartituur() {
 
   const verwerkBestand = async (file: File) => {
     setBestand(file)
+    setIsPdf(file.type === 'application/pdf')
     setStap('verwerken')
-    setLoading(true)
 
     const reader = new FileReader()
     reader.onload = async (e) => {
       const base64 = e.target?.result as string
-      setVoorvertoning(base64)
 
       try {
-        const response = await fetch('/api/herken-partituur', {
+        // Stap 1: AI herkent titel en componist
+        const herkenResponse = await fetch('/api/herken-partituur', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            bestand: base64,
-            type: file.type 
-          })
+          body: JSON.stringify({ bestand: base64, type: file.type })
         })
-        const data = await response.json()
-        setTitel(data.titel || '')
-        setComponist(data.componist || '')
+        const herkenData = await herkenResponse.json()
+        const gevondenTitel = herkenData.titel || ''
+        const gevondenComponist = herkenData.componist || ''
+        setTitel(gevondenTitel)
+        setComponist(gevondenComponist)
+
+        // Stap 2: referenties zoeken op basis van herkende data
+        if (gevondenTitel) {
+          const refResponse = await fetch('/api/zoek-referenties', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ titel: gevondenTitel, componist: gevondenComponist })
+          })
+          const refData = await refResponse.json()
+          setReferenties(refData.links || [])
+        }
       } catch (e) {
-        console.error(e)
+        console.error('Fout bij verwerken:', e)
       }
 
-      setLoading(false)
       setStap('bevestigen')
     }
     reader.readAsDataURL(file)
@@ -67,7 +77,6 @@ export default function NieuwePartituur() {
       const { error: uploadError } = await supabase.storage
         .from('partituren')
         .upload(bestandsnaam, bestand)
-
       if (uploadError) throw uploadError
 
       const { data: urlData } = supabase.storage
@@ -80,12 +89,23 @@ export default function NieuwePartituur() {
           titel,
           componist,
           bestand_url: urlData.publicUrl,
-          leraar_id: user.id
+          leraar_id: user.id,
+          // Referenties meteen opslaan
+          referentie_url: referenties.length > 0 ? JSON.stringify(referenties) : null
         })
         .select()
         .single()
-
       if (dbError) throw dbError
+
+      // Annotatie opslaan indien ingevuld
+      if (annotatie.trim()) {
+        await supabase.from('annotaties').insert({
+          partituur_id: partituur.id,
+          auteur_id: user.id,
+          inhoud: annotatie,
+          type: 'leraar'
+        })
+      }
 
       router.push(`/partituren/${partituur.id}`)
     } catch (e: any) {
@@ -95,9 +115,7 @@ export default function NieuwePartituur() {
   }
 
   return (
-    <main className="min-h-screen px-6 py-10"
-      style={{ backgroundColor: '#F3E7DD' }}>
-
+    <main className="min-h-screen px-6 py-10" style={{ backgroundColor: '#F3E7DD' }}>
       <div className="max-w-lg mx-auto">
 
         <button onClick={() => router.back()}
@@ -131,21 +149,10 @@ export default function NieuwePartituur() {
               <p className="text-orange-200 text-sm">Scan een papieren partituur met je camera</p>
             </button>
 
-            <input
-              ref={bestandInput}
-              type="file"
-              accept=".pdf,image/*"
-              onChange={handleBestandKeuze}
-              className="hidden"
-            />
-            <input
-              ref={cameraInput}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleBestandKeuze}
-              className="hidden"
-            />
+            <input ref={bestandInput} type="file" accept=".pdf,image/*"
+              onChange={handleBestandKeuze} className="hidden" />
+            <input ref={cameraInput} type="file" accept="image/*"
+              capture="environment" onChange={handleBestandKeuze} className="hidden" />
           </div>
         )}
 
@@ -159,22 +166,31 @@ export default function NieuwePartituur() {
               Partituur wordt herkend...
             </p>
             <p className="text-sm text-center" style={{ color: '#888' }}>
-              We zoeken de titel en componist op
+              We zoeken de titel, componist en referentie-audio op
             </p>
           </div>
         )}
 
         {stap === 'bevestigen' && (
           <div className="flex flex-col gap-4">
-            {voorvertoning && (
-              <div className="rounded-2xl overflow-hidden"
+
+            {/* PDF toon icoon, afbeelding toon preview */}
+            {isPdf ? (
+              <div className="rounded-2xl p-6 flex items-center gap-4"
                 style={{ backgroundColor: '#fff' }}>
-                <img
-                  src={voorvertoning}
-                  alt="Voorvertoning"
-                  className="w-full object-contain max-h-64"
-                />
+                <span className="text-4xl">📄</span>
+                <div>
+                  <p className="font-semibold" style={{ color: '#333' }}>{bestand?.name}</p>
+                  <p className="text-sm" style={{ color: '#888' }}>PDF partituur</p>
+                </div>
               </div>
+            ) : (
+              bestand && (
+                <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#fff' }}>
+                  <img src={URL.createObjectURL(bestand)} alt="Voorvertoning"
+                    className="w-full object-contain max-h-64" />
+                </div>
+              )
             )}
 
             <input
@@ -195,8 +211,36 @@ export default function NieuwePartituur() {
               style={{ backgroundColor: '#fff' }}
             />
 
+            {/* Gevonden referenties tonen */}
+            {referenties.length > 0 && (
+              <div className="rounded-2xl p-4" style={{ backgroundColor: '#fff' }}>
+                <p className="text-sm font-semibold mb-3" style={{ color: '#333' }}>
+                  Gevonden referenties ({referenties.length})
+                </p>
+                <div className="flex flex-col gap-2">
+                  {referenties.map((ref: any, i: number) => (
+                    <div key={i} className="flex items-center gap-3 p-2 rounded-xl"
+                      style={{ backgroundColor: '#F3E7DD' }}>
+                      {ref.thumbnail && (
+                        <img src={ref.thumbnail} alt={ref.titel}
+                          className="w-14 h-10 rounded-lg object-cover flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate" style={{ color: '#333' }}>
+                          {ref.titel}
+                        </p>
+                        <p className="text-xs" style={{ color: '#888' }}>
+                          {ref.platform === 'spotify' ? '🎵 Spotify' : '▶ YouTube'} · {ref.kanaal}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <textarea
-              placeholder="Annotaties en instructies voor de student (optioneel)"
+              placeholder="Instructies voor de student (optioneel)"
               value={annotatie}
               onChange={(e) => setAnnotatie(e.target.value)}
               rows={4}
@@ -204,9 +248,7 @@ export default function NieuwePartituur() {
               style={{ backgroundColor: '#fff' }}
             />
 
-            {fout && (
-              <p className="text-sm" style={{ color: '#FF560D' }}>{fout}</p>
-            )}
+            {fout && <p className="text-sm" style={{ color: '#FF560D' }}>{fout}</p>}
 
             <button
               onClick={uploaden}
