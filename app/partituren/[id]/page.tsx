@@ -161,6 +161,18 @@ export default function PartituurDetail() {
             </div>
           </div>
 
+          {/* Bewerken knop voor leraar-eigenaar */}
+          {rol === 'leraar' && partituur.leraar_id === userId && (
+            <div className="px-6 pb-4">
+              <button
+                onClick={() => router.push(`/partituren/${partituur.id}/bewerken`)}
+                className="w-full py-2.5 rounded-xl text-sm font-medium transition-transform hover:scale-[1.01]"
+                style={{ backgroundColor: '#F3E7DD', color: '#0766C6' }}>
+                ✏️ Partituur bewerken
+              </button>
+            </div>
+          )}
+
           {/* PDF inline viewer */}
           {partituur.bestand_url && (
             <div>
@@ -316,17 +328,27 @@ export default function PartituurDetail() {
 function ReferentieKaart({ ref_ }: { ref_: any }) {
   return (
     <a href={ref_.url} target="_blank" rel="noopener noreferrer"
-      className="flex items-center gap-3 p-3 rounded-xl transition-transform hover:scale-[1.02]"
+      className="flex flex-col gap-2 p-3 rounded-xl transition-transform hover:scale-[1.02]"
       style={{ backgroundColor: '#F3E7DD' }}>
-      {ref_.thumbnail && (
-        <img src={ref_.thumbnail} alt={ref_.titel}
-          className="w-16 h-12 rounded-lg object-cover flex-shrink-0" />
-      )}
-      <div className="min-w-0">
-        <p className="text-sm font-medium truncate" style={{ color: '#333' }}>{ref_.titel}</p>
-        <p className="text-xs mt-0.5" style={{ color: '#888' }}>{ref_.kanaal}</p>
+      <div className="flex items-center gap-3">
+        {ref_.thumbnail && (
+          <img src={ref_.thumbnail} alt={ref_.titel}
+            className="w-16 h-12 rounded-lg object-cover flex-shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate" style={{ color: '#333' }}>{ref_.titel}</p>
+          <p className="text-xs mt-0.5" style={{ color: '#888' }}>{ref_.kanaal}</p>
+        </div>
+        <span className="text-lg flex-shrink-0">↗</span>
       </div>
-      <span className="ml-auto text-lg flex-shrink-0">↗</span>
+      {ref_.duiding && (
+        <div className="flex items-start gap-2 px-1">
+          <span className="text-xs flex-shrink-0 mt-0.5" style={{ color: '#0766C6' }}>✦</span>
+          <p className="text-xs italic leading-relaxed" style={{ color: '#555' }}>
+            {ref_.duiding}
+          </p>
+        </div>
+      )}
     </a>
   )
 }
