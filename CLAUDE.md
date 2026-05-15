@@ -38,7 +38,7 @@ van leerwinst."
 - Supabase (PostgreSQL database, authenticatie, bestandsopslag, realtime)
 - Framer Motion (animaties — nog te installeren)
 - Deployment: Vercel (nog te doen)
-- AI integratie: Anthropic API (claude-opus-4-6)
+- AI integratie: Anthropic API (claude-opus-4-6 voor studio feedback, claude-haiku-4-5 voor challenges)
 - YouTube Data API v3
 - Spotify API (nog te integreren)
 
@@ -103,7 +103,7 @@ klassen (id, naam, leraar_id, created_at)
 klas_studenten (klas_id, student_id)
 partituren (id, titel, componist, bestand_url, referentie_url, leraar_audio_url, leraar_id, klas_id, created_at)
 annotaties (id, partituur_id, auteur_id, inhoud, audio_url, type, created_at)
-oefensessies (id, student_id, partituur_id, duur, opname_url, notities, doel, tops, tips, ai_feedback, bpm, status, created_at)
+oefensessies (id, student_id, partituur_id, duur, opname_url, notities, doel, tops, tips, ai_feedback, bpm, status, gevoel, challenges, created_at)
 feedback (id, sessie_id, auteur_id, inhoud, audio_url, type, created_at)
 
 -- Nieuwe tabel toegevoegd
@@ -116,7 +116,33 @@ Row Level Security is ingeschakeld op alle tabellen.
 - `partituren` — PDF bestanden en leraar audio uploads
 - `opnames` — student opnames van oefensessies
 
-## Bestandsstructuur
+## Kritieke dataformaten
+
+### oefensessies.challenges
+Opgeslagen als `string[]` (plain strings). Studio converteert de API-respons van
+`[{"challenge": "..."}]` naar `["..."]` voor opslaan. Bij weergave altijd normaliseren:
+```ts
+const normalized: string[] = (raw || []).map((c: any) =>
+  typeof c === 'string' ? c : (c.challenge ?? '')
+).filter(Boolean)
+```
+
+### oefensessies.ai_feedback
+Opgeslagen als JSON string. `tops` en `tips` zijn PLAIN STRINGS (geen arrays).
+`motivatie` is ook een string. Bij weergave normaliseren naar arrays:
+```ts
+const feedbackTops: string[] = aiFeedback?.tops
+  ? Array.isArray(aiFeedback.tops) ? aiFeedback.tops : [aiFeedback.tops]
+  : []
+```
+
+### oefensessies.gevoel
+Mogelijke waarden: `'Super goed!'`, `'Goed bezig'`, `'Oké'`, `'Moeilijk'`
+
+### feedback.type
+Interactietypes die studenten op elkaars sessies kunnen plaatsen:
+`'leraar_reactie'`, `'student_kudo'`, `'student_boost'`, `'student_reactie'`
+
 ## Bestandsstructuur
 
 ```
@@ -135,18 +161,36 @@ app/
   dashboard/
     page.tsx                        — dashboard per rol met echte data
   partituren/
-    page.tsx                        — overzichtslijst partituren
+    page.tsx                        — overzichtslijst + quickstart widget (student) / upload knop (leraar)
     nieuw/page.tsx                  — upload flow PDF + foto
     [id]/page.tsx                   — detailpagina met PDF viewer + referenties
+    [id]/bewerken/page.tsx          — partituur bewerken (leraar)
   studio/
-    [id]/page.tsx                   — volledige oefenstudio
+    [id]/page.tsx                   — volledige oefenstudio (5 stappen)
+  sessies/
+    page.tsx                        — logboek: eigen + groepsactiviteit, filters, interacties
+    [id]/page.tsx                   — sessiedetail: opname, annotaties, AI feedback, challenges
+  profiel/
+    page.tsx                        — profiel met 3 tabs: Ik / Traject / Oefenen
+  venster/
+    page.tsx                        — classview voor leraar: overzicht / activiteiten / klassen
+  parcours/
+    page.tsx                        — parcours/voortgang student
+  klassen/
+    page.tsx                        — klasbeheer
   api/
     herken-partituur/route.ts       — Anthropic API: titel/componist herkenning
     zoek-referenties/route.ts       — YouTube API: uitvoeringen + Shorts
-    studio-feedback/route.ts        — Anthropic API: AI reflectie feedback
+    studio-feedback/route.ts        — Anthropic API: AI reflectie feedback (claude-opus-4-6)
+    genereer-challenges/route.ts    — Anthropic API: AI challenges genereren (claude-haiku-4-5)
+    oefenprofiel/route.ts           — oefenprofiel API
+    seed/route.ts                   — seed route (dev only)
 lib/
   supabase.ts                       — Supabase client
+components/
+  BottomNav.tsx                     — role-aware bottom navigatie (student vs leraar)
 ```
+
 ## Wat al gebouwd is ✅
 
 ### Authenticatie & onboarding
@@ -169,20 +213,54 @@ lib/
 - Annotaties opslaan + weergeven (leraar vs student gescheiden)
 - Partiturenlijst met uploader + datum + gekleurde bovenrand
 - Detailpagina met inline PDF viewer (standaard open)
+- Quickstart widget bovenaan partiturenlijst (student): top 3 partituren direct starten
+- "Verdergaan" kaart (oranje) toont laatste geoefende partituur apart van quickstart
 - Dashboard met echte Supabase data, uploadersnamen, recente partituren
 
 ### Cluster 2 — De Studio
-- Volledige oefenstudio in 4 stappen:
+- Volledige oefenstudio in 5 stappen:
   - Stap 1 Briefing: partituur info + challenges van leraar (oranje game-achtige badges) + referentie audio
-  - Stap 2 Toggles: student kiest zichtbare elementen (timer/opname/challenges altijd aan, rest optioneel: partituur/metronoom/leraar track/opmerkingen)
-  - Stap 3 Sessie actief: opname start/stop/pauze, timer, visuele metronoom (rustig pulserend), PDF toggle, leraar track, tijdstempel annotaties op eigen opname
+  - Stap 2 Toggles: student kiest zichtbare elementen (timer/opname/challenges altijd aan, rest optioneel)
+  - Stap 3 Sessie actief: opname start/stop/pauze, timer, visuele metronoom, PDF toggle, leraar track, tijdstempel annotaties
   - Stap 4 Reflectie: 3 vragen met gamification (genummerde badges, emoji keuze voor gevoel)
   - Stap 5 Analyse: AI feedback tops/tips/motivatie + opname terugluisteren met annotaties
 - Metronoom via Web Audio API met visuele beat indicator
 - Opname via MediaRecorder API met correcte MIME type detectie
 - Auto-stop metronoom + audio bij sessie afronden
-- AI feedback route via Anthropic API
+- AI feedback via Anthropic API (claude-opus-4-6)
+- AI challenges genereren via Anthropic API (claude-haiku-4-5)
 - Sessie + annotaties opgeslagen in Supabase
+
+### Cluster 3 — Het Venster
+- Classview pagina voor leraar (app/venster/page.tsx)
+- Tab: Overzicht — studentengrid met actief/inactief status, sessiebadges, stats (% actief, gem. duur)
+- Tab: Activiteiten — feed van alle studentsessies met 👍/🔥 quick reactions + tekstinput per sessie
+- Tab: Klassen — klassen aanmaken/beheren, studenten toevoegen/verwijderen
+- Leraarreacties worden opgeslagen in feedback tabel (type: leraar_reactie)
+
+### Cluster 4 — Het Parcours / Logboek
+- Logboek pagina voor student (app/sessies/page.tsx)
+- Eigen sessies + klasgenoot sessies (laatste 30 dagen)
+- Twee-laags filter: activiteitstype (eigen/alles) + groepsfilter (per klas, enkel bij "alles")
+- Interacties per sessiekaart: kudos, boosts, comments (student_kudo / student_boost / student_reactie)
+- Statsstrip: aantal sessies, totale tijd, streak
+- Datumgroepering met dagindicatoren
+- Sessiedetailpagina (app/sessies/[id]/page.tsx): opname, tijdnotities, challenges, reflectie, AI feedback, leraarreacties
+
+### Cluster 5 — Het Profiel
+- Profielpagina met 3 tabs: Ik / Traject / Oefenen
+- Tab Ik: grote avatar (kleurverloop cirkel), bio, genres, 3-kolom stats, groepen, laatste badges
+- Tab Traject: laatste sessie widget, niveau + volgende mijlpaal gecombineerd, actieve challenges (string[]),
+  weekkalender, mijlpalen 2-kolom grid, activiteitsfeed
+- Tab Oefenen: partiturenlijst met directe studio-knop per partituur
+- Actieve challenges worden opgehaald + genormaliseerd (string[] of legacy {challenge: string}[])
+
+### Navigatie
+- BottomNav component (components/BottomNav.tsx)
+- Role-aware: student nav vs leraar nav
+- Student: Home / Oefenen / Logboek / Profiel
+- Leraar: Home / Partituren / Classview / Profiel
+- Safe-area inset voor iPhone bottom bar
 
 ## Wat nog gebouwd moet worden ❌
 
@@ -192,27 +270,19 @@ lib/
 - Tijdstempel annotaties op leraar opname
 - Opslaan als leraar_audio_url in partituren tabel
 
-### Prioriteit 2 — Dashboard oefensessies uitbreiden
-- Overzicht sessies deze week: te doen / afgerond
-- Visuele activiteitsweergave (weekkalender of streaks)
-- Klikbaar naar sessiedetail
+### Prioriteit 2 — Ouder-view in Het Venster
+- Vereenvoudigde versie van activiteitsoverzicht voor ouders
+- Enkel voortgang kind zichtbaar, geen klasgegevens
+- Aparte rol 'ouder' of gefilterde view op basis van rol
 
-### Prioriteit 3 — Het Venster (app/venster/)
-- Leraar ziet wanneer/hoe lang/wat er geoefend werd per student
-- Laagdrempelige reactie: duim omhoog, korte tekst, audio-reactie
-- Ouder ziet vereenvoudigde versie van activiteit kind
-- Geen volwaardig berichtensysteem — transparantielaag
+### Prioriteit 3 — Toewijzing partituur aan student/klas
+- Leraar kan partituur koppelen aan specifieke student of klas
+- Student ziet enkel aan hem/haar toegewezen partituren in logboek/dashboard
 
-### Prioriteit 4 — Het Parcours (app/parcours/)
-- Persoonlijk groeipad student
-- Streaks bijhouden op basis van oefensessies
-- Mijlpalen en visuele progressie
-- Geen competitieve leaderboards — intrinsiek motiverend
-
-### Prioriteit 5 — Het Profiel (app/profiel/)
-- Muzikantenpagina per student
-- Instrument, favorieten, opgeslagen opnames
-- Sociaal aspect binnen academie
+### Prioriteit 4 — Parcours pagina verder uitwerken
+- Streaks op basis van echte oefensessies bijhouden
+- Mijlpalen koppelen aan echte data
+- Visueel groeipad
 
 ### Later / Fase 2
 - Framer Motion animaties toevoegen
@@ -220,16 +290,15 @@ lib/
 - Spotify API integratie
 - Camerafunctie testen op mobiel
 - Custom illustraties van Wout integreren
-- Toewijzing partituur aan student/klas
 
 ## Omgeving & API keys (.env.local)
-``` 
-
+```
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ANTHROPIC_API_KEY=...
 YOUTUBE_API_KEY=...
 ```
+
 ## GitHub
 https://github.com/woutvanrhijn/Doremio
 
@@ -241,6 +310,8 @@ https://github.com/woutvanrhijn/Doremio
 - Responsive: smartphone, iPad en laptop
 - Altijd volledige bestanden schrijven bij aanpassingen zodat copy-paste foutloos werkt
 - Bij twijfel: eerst diagnosticeren, dan pas code schrijven
+- Variabelen en code in het Nederlands
+- Kleuren altijd via inline style={{}} — geen Tailwind kleurklassen
 
 ## Hoe een nieuwe chat starten
 1. Ga naar claude.ai → Doremio project
