@@ -5,627 +5,676 @@ import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import BottomNav from '@/components/BottomNav'
 
-type SessieItem = {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Klas = { id: string; naam: string; leraar_id: string }
+
+type StudentSessieCard = {
+  type: 'sessie'
   id: string
-  student_id: string
-  duur: number
-  gevoel: string | null
-  tops: string | null
-  opname_url: string | null
-  bpm: number | null
-  created_at: string
-  partituren: { titel: string; componist: string | null } | null
-  isEigen: boolean
+  studentId: string
   studentNaam: string
+  datum: string
+  titel: string
+  componist: string | null
   klasId: string | null
+  klasNaam: string | null
+  leraarNaam: string | null
+  sessieCount: number
+  duur: number
+  bpm: number | null
+  gevoel: string | null
 }
 
-type Interactie = {
+type LeraarMateriaakCard = {
+  type: 'materiaal'
   id: string
-  sessie_id: string
-  auteur_id: string
-  inhoud: string
-  type: string
-  created_at: string
-  auteurNaam: string
+  leraarId: string
+  leraarNaam: string
+  datum: string
+  titel: string
+  componist: string | null
+  klasId: string | null
+  klasNaam: string | null
+  isOpname?: boolean
 }
 
-type Klas = { id: string; naam: string }
-
-const GEVOEL_EMOJI: Record<string, string> = {
-  'Super goed!': '🔥', 'Goed bezig': '😊', 'Oké': '😐', 'Moeilijk': '😓',
+type AchievementCard = {
+  type: 'achievement'
+  id: string
+  studentId: string
+  studentNaam: string
+  datum: string
+  milestone: number
+  sessieCount: number
+  klasId: string | null
+  klasNaam: string | null
 }
 
-function formatDuur(seconden: number): string {
-  const u = Math.floor(seconden / 3600)
-  const m = Math.floor((seconden % 3600) / 60)
-  const s = seconden % 60
-  if (u > 0) return `${u}u ${m}min`
-  if (m > 0) return `${m}min`
-  return `${s}s`
+type FeedCard = StudentSessieCard | LeraarMateriaakCard | AchievementCard
+
+function formateerDatum(datum: string): string {
+  const d = new Date(datum)
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
-function formatTotaal(seconden: number): string {
-  const u = Math.floor(seconden / 3600)
-  const m = Math.floor((seconden % 3600) / 60)
-  if (u > 0) return `${u}u ${m}min`
-  return `${m}min`
+function korteDatum(datum: string): string {
+  const d = new Date(datum)
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-function berekenStreak(sessies: { created_at: string }[]): number {
-  if (sessies.length === 0) return 0
-  const dagen = [...new Set(sessies.map(s => s.created_at.slice(0, 10)))].sort().reverse()
-  const vandaag = new Date().toISOString().slice(0, 10)
-  const gisteren = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
-  if (dagen[0] !== vandaag && dagen[0] !== gisteren) return 0
-  let streak = 1
-  for (let i = 1; i < dagen.length; i++) {
-    const diff = Math.round((new Date(dagen[i - 1]).getTime() - new Date(dagen[i]).getTime()) / 86400000)
-    if (diff === 1) streak++
-    else break
+function formateerDuur(sec: number): string {
+  if (!sec) return ''
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min} min`
+  const uur = Math.floor(min / 60)
+  const rest = min % 60
+  return rest > 0 ? `${uur}u ${rest}min` : `${uur}u`
+}
+
+const GEVOEL_KLEUR: Record<string, { bg: string; text: string }> = {
+  'Super goed!': { bg: 'rgba(34,197,94,0.2)', text: '#22C55E' },
+  'Goed bezig':  { bg: 'rgba(7,102,198,0.2)', text: '#0766C6' },
+  'Oké':         { bg: 'rgba(255,209,0,0.2)',  text: '#B8960A' },
+  'Moeilijk':    { bg: 'rgba(239,68,68,0.2)',  text: '#EF4444' },
+}
+
+// ─── SVG Icons ────────────────────────────────────────────────────────────────
+
+function IconPersoon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+    </svg>
+  )
+}
+
+function IconMuziek() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <line x1="3" y1="6"  x2="13" y2="6"  stroke="white" strokeWidth="2" strokeLinecap="round" />
+      <line x1="3" y1="10" x2="13" y2="10" stroke="white" strokeWidth="2" strokeLinecap="round" />
+      <line x1="3" y1="14" x2="10" y2="14" stroke="white" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="18.5" cy="17" r="2.5" fill="white" />
+      <line x1="21" y1="17" x2="21" y2="9.5" stroke="white" strokeWidth="2" strokeLinecap="round" />
+      <path d="M21 9.5 L24 8.5 L24 12 L21 13" fill="white" stroke="none" />
+    </svg>
+  )
+}
+
+function IconOpname() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  )
+}
+
+function IconBadge() {
+  return (
+    <svg width="34" height="34" viewBox="0 0 43 43" fill="none">
+      <path
+        d="M35.481 35.5H35.5M35.481 35.5C34.2356 36.735 31.9786 36.4274 30.3959 36.4274C28.453 36.4274 27.5174 36.8074 26.1309 38.194C24.9502 39.3747 23.3675 41.5 21.5 41.5C19.6326 41.5 18.0498 39.3748 16.8691 38.194C15.4826 36.8074 14.547 36.4274 12.6041 36.4274C11.0214 36.4274 8.76437 36.735 7.51898 35.5C6.26362 34.2551 6.57256 31.9888 6.57256 30.3958C6.57256 28.3828 6.13231 27.4572 4.69876 26.0237C2.56627 23.8912 1.50003 22.8249 1.5 21.5C1.50002 20.175 2.56625 19.1088 4.69871 16.9763C5.9784 15.6966 6.57256 14.4286 6.57256 12.6041C6.57256 11.0213 6.26499 8.76429 7.5 7.51889C8.74485 6.26357 11.0112 6.57251 12.6042 6.57251C14.4285 6.57251 15.6966 5.97841 16.9763 4.69874C19.1088 2.56625 20.175 1.5 21.5 1.5C22.825 1.5 23.8912 2.56625 26.0237 4.69874C27.3031 5.97813 28.5709 6.57251 30.3958 6.57251C31.9787 6.57251 34.2357 6.26494 35.4811 7.5C36.7364 8.74486 36.4274 11.0112 36.4274 12.6041C36.4274 14.6172 36.8677 15.5427 38.3013 16.9763C40.4338 19.1088 41.5 20.175 41.5 21.5C41.5 22.8249 40.4337 23.8912 38.3012 26.0237C36.8677 27.4572 36.4274 28.3829 36.4274 30.3958C36.4274 31.9888 36.7364 34.2551 35.481 35.5Z"
+        fill="#FFD100" stroke="#E6BC00" strokeWidth="1.5"
+      />
+      <path
+        d="M15.5 23.2857C15.5 23.2857 17.9 24.5893 19.1 26.5C19.1 26.5 22.7 19 27.5 16.5"
+        stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function IconHart({ gevuld }: { gevuld: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24"
+      fill={gevuld ? '#FF560D' : 'none'}
+      stroke={gevuld ? '#FF560D' : 'rgba(255,255,255,0.5)'}
+      strokeWidth="2" strokeLinecap="round">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+    </svg>
+  )
+}
+
+function IconComment() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  )
+}
+
+function IconBekijken() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="#0766C6" strokeWidth="2" strokeLinecap="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function IconOpslaan({ opgeslagen }: { opgeslagen: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24"
+      fill={opgeslagen ? '#FFD100' : 'none'}
+      stroke={opgeslagen ? '#FFD100' : 'rgba(255,255,255,0.5)'}
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  )
+}
+
+function IconZoek() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="#999" strokeWidth="2" strokeLinecap="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  )
+}
+
+function TagPill({ label, textKleur, bg }: { label: string; textKleur: string; bg: string }) {
+  return (
+    <span style={{
+      fontFamily: 'var(--font-apercu)', fontSize: 11, fontWeight: 600,
+      color: textKleur, backgroundColor: bg, borderRadius: 20, padding: '4px 10px', whiteSpace: 'nowrap',
+    }}>
+      {label}
+    </span>
+  )
+}
+
+// ─── Actie knop helper ────────────────────────────────────────────────────────
+
+function ActieKnop({
+  onClick, active, activeBg, children,
+}: {
+  onClick: () => void
+  active?: boolean
+  activeBg?: string
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        background: 'none', border: 'none', padding: '6px 10px', cursor: 'pointer',
+        display: 'flex', alignItems: 'center', gap: 5, borderRadius: 20,
+        backgroundColor: active ? (activeBg ?? 'rgba(255,255,255,0.08)') : 'transparent',
+        transition: 'background-color 0.15s',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
+function ActieLabel({ children, kleur }: { children: React.ReactNode; kleur?: string }) {
+  return (
+    <span style={{ fontFamily: 'var(--font-apercu)', fontSize: 11, fontWeight: 600, color: kleur ?? 'rgba(255,255,255,0.5)' }}>
+      {children}
+    </span>
+  )
+}
+
+function CommentInput({ accentKleur, onStuur }: { accentKleur: string; onStuur: () => void }) {
+  const [tekst, setTekst] = useState('')
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 2 }}>
+      <input
+        type="text"
+        placeholder="Schrijf een reactie..."
+        value={tekst}
+        onChange={e => setTekst(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && tekst.trim()) { setTekst(''); onStuur() } }}
+        autoFocus
+        style={{
+          flex: 1, border: 'none', outline: 'none',
+          backgroundColor: 'rgba(255,255,255,0.06)',
+          borderRadius: 20, padding: '8px 14px',
+          fontFamily: 'var(--font-apercu)', fontSize: 13, color: '#fff',
+        }}
+      />
+      <button
+        onClick={() => { if (tekst.trim()) { setTekst(''); onStuur() } }}
+        style={{
+          backgroundColor: accentKleur, border: 'none', cursor: 'pointer',
+          borderRadius: 20, padding: '8px 16px',
+          fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 12, color: '#fff',
+          flexShrink: 0,
+        }}
+      >
+        Stuur
+      </button>
+    </div>
+  )
+}
+
+// ─── Feed Card Components ──────────────────────────────────────────────────────
+
+function SessieKaart({ kaart, onBekijken }: { kaart: StudentSessieCard; onBekijken?: () => void }) {
+  const [gelikt, setGelikt] = useState(false)
+  const [commentOpen, setCommentOpen] = useState(false)
+  const gevoelKleur = kaart.gevoel ? (GEVOEL_KLEUR[kaart.gevoel] ?? { bg: 'rgba(255,255,255,0.1)', text: 'rgba(255,255,255,0.6)' }) : null
+  const duurTekst = kaart.duur > 0 ? formateerDuur(kaart.duur) : null
+
+  return (
+    <div style={{ backgroundColor: '#0D1B2A', borderRadius: 16, borderLeft: '4px solid #0766C6', overflow: 'hidden' }}>
+      {/* Blauwe header strip */}
+      <div style={{ backgroundColor: 'rgba(7,102,198,0.12)', padding: '8px 14px 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0766C6" strokeWidth="2.5" strokeLinecap="round">
+          <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+        </svg>
+        <span style={{ fontFamily: 'var(--font-apercu)', fontSize: 10, fontWeight: 700, color: '#0766C6', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+          Oefensessie
+        </span>
+      </div>
+
+      <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* Bovenste rij */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: '#0766C6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <IconPersoon />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontFamily: 'var(--font-apercu)', fontWeight: 600, fontSize: 13, color: 'white', margin: 0, lineHeight: 1.3 }}>
+              {kaart.studentNaam}{' '}
+              <span style={{ color: 'rgba(255,255,255,0.45)', fontWeight: 400, fontSize: 12 }}>{formateerDatum(kaart.datum)}</span>
+            </p>
+            <p style={{ fontFamily: 'var(--font-apercu)', fontWeight: 700, fontStyle: 'italic', fontSize: 14, color: 'white', margin: '4px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              &ldquo;{kaart.titel}&rdquo;
+              {kaart.componist ? <span style={{ fontWeight: 500, fontStyle: 'normal', color: 'rgba(255,255,255,0.75)' }}> {kaart.componist}</span> : null}
+            </p>
+            {(kaart.klasNaam || kaart.leraarNaam) && (
+              <p style={{ fontFamily: 'var(--font-apercu)', fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: '3px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {kaart.klasNaam ? `Klas ${kaart.klasNaam}` : ''}{kaart.klasNaam && kaart.leraarNaam ? ' · ' : ''}{kaart.leraarNaam ?? ''}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Stats */}
+        {(duurTekst || kaart.bpm || kaart.gevoel) && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {duurTekst && (
+              <span style={{ fontFamily: 'var(--font-apercu)', fontSize: 11, color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round">
+                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                </svg>
+                {duurTekst}
+              </span>
+            )}
+            {kaart.bpm && (
+              <span style={{ fontFamily: 'var(--font-apercu)', fontSize: 11, color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+                {kaart.bpm} bpm
+              </span>
+            )}
+            {kaart.gevoel && gevoelKleur && (
+              <span style={{ fontFamily: 'var(--font-apercu)', fontSize: 10, fontWeight: 600, color: gevoelKleur.text, backgroundColor: gevoelKleur.bg, borderRadius: 20, padding: '2px 8px' }}>
+                {kaart.gevoel}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Acties */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <ActieKnop onClick={() => onBekijken?.()} activeBg="rgba(7,102,198,0.15)">
+              <IconBekijken />
+              <ActieLabel kleur="#0766C6">Bekijken</ActieLabel>
+            </ActieKnop>
+            <ActieKnop onClick={() => setGelikt(v => !v)} active={gelikt} activeBg="rgba(255,86,13,0.12)">
+              <IconHart gevuld={gelikt} />
+            </ActieKnop>
+            <ActieKnop onClick={() => setCommentOpen(v => !v)} active={commentOpen}>
+              <IconComment />
+              <ActieLabel>Reageren</ActieLabel>
+            </ActieKnop>
+          </div>
+          {kaart.klasNaam && (
+            <TagPill label={kaart.klasNaam} textKleur="rgba(255,255,255,0.7)" bg="rgba(255,255,255,0.1)" />
+          )}
+        </div>
+
+        {commentOpen && <CommentInput accentKleur="#0766C6" onStuur={() => setCommentOpen(false)} />}
+      </div>
+    </div>
+  )
+}
+
+function LeraarMateriaalkKaart({ kaart }: { kaart: LeraarMateriaakCard }) {
+  const [gelikt, setGelikt] = useState(false)
+  const [opgeslagen, setOpgeslagen] = useState(false)
+  const [commentOpen, setCommentOpen] = useState(false)
+
+  const kleur = kaart.isOpname ? '#FFD100' : '#FF560D'
+  const kleurBg = kaart.isOpname ? 'rgba(255,209,0,0.1)' : 'rgba(255,86,13,0.1)'
+
+  return (
+    <div style={{ backgroundColor: '#0D1B2A', borderRadius: 16, borderLeft: `4px solid ${kleur}`, overflow: 'hidden' }}>
+      {/* Header strip */}
+      <div style={{ backgroundColor: kleurBg, padding: '8px 14px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {kaart.isOpname ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kleur} strokeWidth="2.5" strokeLinecap="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kleur} strokeWidth="2.5" strokeLinecap="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+            </svg>
+          )}
+          <span style={{ fontFamily: 'var(--font-apercu)', fontSize: 10, fontWeight: 700, color: kleur, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+            {kaart.isOpname ? 'Opname · Lesmateriaal' : 'Nieuw lesmateriaal'}
+          </span>
+        </div>
+        {kaart.isOpname && (
+          <span style={{ fontFamily: 'var(--font-apercu)', fontSize: 10, fontWeight: 700, color: kleur, backgroundColor: 'rgba(255,209,0,0.2)', borderRadius: 20, padding: '2px 8px' }}>
+            Opname
+          </span>
+        )}
+      </div>
+
+      <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: kleur, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {kaart.isOpname ? <IconOpname /> : <IconMuziek />}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontFamily: 'var(--font-apercu)', fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: 0, lineHeight: 1.3 }}>
+              {kaart.leraarNaam} · {korteDatum(kaart.datum)}
+            </p>
+            <p style={{ fontFamily: 'var(--font-apercu)', fontWeight: 700, fontStyle: 'italic', fontSize: 14, color: 'white', margin: '4px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              &ldquo;{kaart.titel}&rdquo;
+              {kaart.componist ? <span style={{ fontWeight: 500, fontStyle: 'normal', color: 'rgba(255,255,255,0.75)' }}> {kaart.componist}</span> : null}
+            </p>
+          </div>
+        </div>
+
+        {/* Acties */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <ActieKnop onClick={() => setOpgeslagen(v => !v)} active={opgeslagen} activeBg="rgba(255,209,0,0.12)">
+              <IconOpslaan opgeslagen={opgeslagen} />
+              <ActieLabel kleur={opgeslagen ? '#FFD100' : undefined}>Opslaan</ActieLabel>
+            </ActieKnop>
+            <ActieKnop onClick={() => setGelikt(v => !v)} active={gelikt} activeBg="rgba(255,86,13,0.12)">
+              <IconHart gevuld={gelikt} />
+            </ActieKnop>
+            <ActieKnop onClick={() => setCommentOpen(v => !v)} active={commentOpen}>
+              <IconComment />
+              <ActieLabel>Reageren</ActieLabel>
+            </ActieKnop>
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {kaart.klasNaam && (
+              <TagPill label={kaart.klasNaam} textKleur="rgba(255,255,255,0.7)" bg="rgba(255,255,255,0.1)" />
+            )}
+            <TagPill label="Docent" textKleur="#FF560D" bg="rgba(255,86,13,0.15)" />
+          </div>
+        </div>
+
+        {commentOpen && <CommentInput accentKleur="#FF560D" onStuur={() => setCommentOpen(false)} />}
+      </div>
+    </div>
+  )
+}
+
+function AchievementKaart({ kaart }: { kaart: AchievementCard }) {
+  const [gelikt, setGelikt] = useState(false)
+  const [commentOpen, setCommentOpen] = useState(false)
+
+  const milestoneLabel: Record<number, string> = {
+    1: 'Eerste stap!', 5: 'Op dreef!', 10: 'Repetition queen!', 25: 'Muziekkampioen!',
   }
-  return streak
+
+  return (
+    <div style={{ backgroundColor: '#0D1B2A', borderRadius: 16, borderLeft: '4px solid #FFD100', overflow: 'hidden' }}>
+      <div style={{ backgroundColor: 'rgba(255,209,0,0.1)', padding: '8px 14px 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="#FFD100" stroke="none">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+        <span style={{ fontFamily: 'var(--font-apercu)', fontSize: 10, fontWeight: 700, color: '#FFD100', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+          Achievement unlocked
+        </span>
+      </div>
+
+      <div style={{ padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ width: 52, height: 52, borderRadius: 12, backgroundColor: 'rgba(255,209,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <IconBadge />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontFamily: 'var(--font-apercu)', fontWeight: 600, fontSize: 13, color: 'white', margin: 0, lineHeight: 1.3 }}>
+              {kaart.studentNaam}{' '}
+              <span style={{ color: 'rgba(255,255,255,0.45)', fontWeight: 400, fontSize: 12 }}>{formateerDatum(kaart.datum)}</span>
+            </p>
+            <p style={{ fontFamily: 'var(--font-apercu)', fontWeight: 700, fontStyle: 'italic', fontSize: 15, color: '#FFD100', margin: '4px 0 0' }}>
+              {milestoneLabel[kaart.milestone] ?? `${kaart.milestone} sessies!`}
+            </p>
+            <p style={{ fontFamily: 'var(--font-apercu)', fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: '3px 0 0' }}>
+              New achievement unlocked · <span style={{ color: '#FFD100' }}>{kaart.sessieCount} sessies</span>
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <ActieKnop onClick={() => setGelikt(v => !v)} active={gelikt} activeBg="rgba(255,86,13,0.12)">
+              <IconHart gevuld={gelikt} />
+            </ActieKnop>
+            <ActieKnop onClick={() => setCommentOpen(v => !v)} active={commentOpen}>
+              <IconComment />
+              <ActieLabel>Reageren</ActieLabel>
+            </ActieKnop>
+          </div>
+          {kaart.klasNaam && (
+            <TagPill label={kaart.klasNaam} textKleur="rgba(255,255,255,0.7)" bg="rgba(255,255,255,0.1)" />
+          )}
+        </div>
+
+        {commentOpen && <CommentInput accentKleur="#FFD100" onStuur={() => setCommentOpen(false)} />}
+      </div>
+    </div>
+  )
 }
 
-function tijdGeleden(datum: string): string {
-  const diff = Math.floor((Date.now() - new Date(datum).getTime()) / 1000)
-  if (diff < 3600) return `${Math.floor(diff / 60)}min geleden`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}u geleden`
-  const d = Math.floor(diff / 86400)
-  return d === 1 ? 'gisteren' : `${d}d geleden`
-}
+// ─── Fictieve leraar-items ─────────────────────────────────────────────────────
 
-function datumLabel(datum: string): string {
-  const vandaag = new Date().toISOString().slice(0, 10)
-  const gisteren = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
-  if (datum === vandaag) return 'Vandaag'
-  if (datum === gisteren) return 'Gisteren'
-  return new Date(datum).toLocaleDateString('nl-BE', { weekday: 'long', day: 'numeric', month: 'long' })
-}
+const FICTIEVE_FEED_ITEMS: FeedCard[] = [
+  {
+    type: 'materiaal', id: 'fict-mat-1', leraarId: 'fict-1',
+    leraarNaam: "Lukas D'hondt",
+    datum: new Date(Date.now() - 2 * 86400000).toISOString(),
+    titel: "Knockin' On Heaven's Door", componist: 'Bob Dylan',
+    klasId: null, klasNaam: '2A', isOpname: false,
+  },
+  {
+    type: 'materiaal', id: 'fict-mat-2', leraarId: 'fict-2',
+    leraarNaam: 'H. Jacobs',
+    datum: new Date(Date.now() - 5 * 86400000).toISOString(),
+    titel: "Knockin' On Heaven's Door", componist: 'Bob Dylan',
+    klasId: null, klasNaam: '1A', isOpname: true,
+  },
+  {
+    type: 'materiaal', id: 'fict-mat-3', leraarId: 'fict-3',
+    leraarNaam: 'G. Jansen',
+    datum: new Date(Date.now() - 10 * 86400000).toISOString(),
+    titel: "Friday I'm In Love", componist: 'The Cure',
+    klasId: null, klasNaam: '3C', isOpname: false,
+  },
+]
 
-export default function SessiesPage() {
-  const [userId, setUserId] = useState('')
-  const [eigenSessies, setEigenSessies] = useState<SessieItem[]>([])
-  const [groepSessies, setGroepSessies] = useState<SessieItem[]>([])
-  const [klassen, setKlassen] = useState<Klas[]>([])
-  const [interacties, setInteracties] = useState<Interactie[]>([])
-  const [profielNaamMap, setProfielNaamMap] = useState<Record<string, string>>({})
+// ─── Main Page ─────────────────────────────────────────────────────────────────
+
+export default function KlasgroepPage() {
   const [loading, setLoading] = useState(true)
-
-  const [filter, setFilter] = useState<'eigen' | 'alles' | string>('eigen')
-  const [periodeFilter, setPeriodeFilter] = useState<'week' | 'maand' | 'alles'>('maand')
-
-  const [reactieTekst, setReactieTekst] = useState<Record<string, string>>({})
-  const [reactieBezig, setReactieBezig] = useState(false)
-  const [toonReactieInput, setToonReactieInput] = useState<string | null>(null)
+  const [feed, setFeed] = useState<FeedCard[]>([])
+  const [klassen, setKlassen] = useState<Klas[]>([])
+  const [geenKlassen, setGeenKlassen] = useState(false)
+  const [zoekterm, setZoekterm] = useState('')
+  const [actieveFilter, setActieveFilter] = useState<string>('all')
 
   const router = useRouter()
 
   useEffect(() => {
-    const haalOp = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/auth/login'); return }
-      setUserId(user.id)
+    const laadData = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/auth/login'); return }
 
-      // Eigen profiel naam
-      const { data: eigenProfiel } = await supabase
-        .from('profiles').select('naam').eq('id', user.id).single()
-      const eigenNaam = eigenProfiel?.naam || 'Jij'
+      const res = await fetch('/api/klasgroep-feed', {
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
+      if (!res.ok) { router.push('/auth/login'); return }
 
-      // Eigen sessies (alles)
-      const { data: eigenData } = await supabase
-        .from('oefensessies')
-        .select('id, student_id, duur, gevoel, tops, opname_url, bpm, created_at, partituren(titel, componist)')
-        .eq('student_id', user.id)
-        .order('created_at', { ascending: false })
-
-      const eigenItems: SessieItem[] = (eigenData || []).map((s: any) => ({
-        ...s, isEigen: true, studentNaam: eigenNaam, klasId: null,
-      }))
-      setEigenSessies(eigenItems)
-
-      // Klassen ophalen
-      const { data: ksData } = await supabase
-        .from('klas_studenten').select('klas_id').eq('student_id', user.id)
-      const klasIds = (ksData || []).map((k: any) => k.klas_id)
-
-      let alleGroepSessies: SessieItem[] = []
-      let naamMap: Record<string, string> = {}
-
-      if (klasIds.length > 0) {
-        const { data: klassenData } = await supabase
-          .from('klassen').select('id, naam').in('id', klasIds).order('naam')
-        setKlassen(klassenData || [])
-
-        // Alle student-IDs uit klassen ophalen
-        const { data: alleKsData } = await supabase
-          .from('klas_studenten').select('klas_id, student_id').in('klas_id', klasIds)
-
-        const klasgenootIds = [...new Set(
-          (alleKsData || []).map((k: any) => k.student_id).filter((id: string) => id !== user.id)
-        )]
-
-        if (klasgenootIds.length > 0) {
-          // Profielen ophalen
-          const { data: profielen } = await supabase
-            .from('profiles').select('id, naam').in('id', klasgenootIds)
-          profielen?.forEach((p: any) => { naamMap[p.id] = p.naam })
-
-          // klas_id per student-ID (neem de eerste klas)
-          const studentKlasMap: Record<string, string> = {}
-          for (const ks of (alleKsData || [])) {
-            if (!studentKlasMap[(ks as any).student_id]) {
-              studentKlasMap[(ks as any).student_id] = (ks as any).klas_id
-            }
-          }
-
-          // Sessies van klasgenoten (laatste 30 dagen)
-          const maandGeleden = new Date(Date.now() - 30 * 86400000).toISOString()
-          const { data: groepData } = await supabase
-            .from('oefensessies')
-            .select('id, student_id, duur, gevoel, tops, opname_url, bpm, created_at, partituren(titel, componist)')
-            .in('student_id', klasgenootIds)
-            .gte('created_at', maandGeleden)
-            .order('created_at', { ascending: false })
-            .limit(100)
-
-          alleGroepSessies = (groepData || []).map((s: any) => ({
-            ...s,
-            isEigen: false,
-            studentNaam: naamMap[s.student_id] || 'Klasgenoot',
-            klasId: studentKlasMap[s.student_id] || null,
-          }))
-          setGroepSessies(alleGroepSessies)
-        }
-      }
-
-      // Interacties ophalen voor eigen sessies + groepssessies
-      setProfielNaamMap({ ...naamMap, [user.id]: eigenNaam })
-      const alleIds = [
-        ...eigenItems.map(s => s.id),
-        ...alleGroepSessies.map(s => s.id),
-      ]
-      if (alleIds.length > 0) {
-        const { data: feedbackData } = await supabase
-          .from('feedback')
-          .select('id, sessie_id, auteur_id, inhoud, type, created_at')
-          .in('sessie_id', alleIds)
-
-        const auteurIds = [...new Set((feedbackData || []).map((f: any) => f.auteur_id))]
-        let auteurNaamMap: Record<string, string> = { ...naamMap, [user.id]: eigenNaam }
-        if (auteurIds.filter(id => !auteurNaamMap[id]).length > 0) {
-          const { data: auteurProfielen } = await supabase
-            .from('profiles').select('id, naam').in('id', auteurIds)
-          auteurProfielen?.forEach((p: any) => { auteurNaamMap[p.id] = p.naam })
-        }
-
-        setInteracties((feedbackData || []).map((f: any) => ({
-          ...f, auteurNaam: auteurNaamMap[f.auteur_id] || 'Iemand',
-        })))
-        setProfielNaamMap(auteurNaamMap)
-      }
-
+      const data = await res.json()
+      setGeenKlassen(data.geenKlassen ?? false)
+      setKlassen(data.klassen ?? [])
+      const gecombineerd = [...FICTIEVE_FEED_ITEMS, ...(data.feed ?? [])]
+        .sort((a, b) => new Date(b.datum).getTime() - new Date(a.datum).getTime())
+      setFeed(gecombineerd)
       setLoading(false)
     }
-    haalOp()
+
+    laadData()
   }, [router])
 
-  const geefReactie = async (sessieId: string, inhoud: string, type: string) => {
-    if (!inhoud.trim()) return
-    setReactieBezig(true)
-    const { data } = await supabase
-      .from('feedback')
-      .insert({ sessie_id: sessieId, auteur_id: userId, inhoud: inhoud.trim(), type })
-      .select('id, sessie_id, auteur_id, inhoud, type, created_at')
-      .single()
-    if (data) {
-      setInteracties(prev => [...prev, { ...data, auteurNaam: profielNaamMap[userId] || 'Jij' }])
+  const filterPills = [
+    { id: 'all', label: 'All' },
+    ...klassen.map((k) => ({ id: k.id, label: k.naam })),
+    { id: 'docenten', label: 'Docenten' },
+    { id: 'nieuwste', label: 'Nieuwste' },
+  ]
+
+  const zoekLower = zoekterm.toLowerCase()
+  const gefilterdeeFeed = feed.filter((kaart) => {
+    if (zoekterm) {
+      let zoekVeld = ''
+      if (kaart.type === 'sessie') zoekVeld = `${kaart.titel} ${kaart.studentNaam} ${kaart.componist ?? ''}`
+      else if (kaart.type === 'materiaal') zoekVeld = `${kaart.titel} ${kaart.leraarNaam} ${kaart.componist ?? ''}`
+      else if (kaart.type === 'achievement') zoekVeld = kaart.studentNaam
+      if (!zoekVeld.toLowerCase().includes(zoekLower)) return false
     }
-    setReactieTekst(prev => ({ ...prev, [sessieId]: '' }))
-    setToonReactieInput(null)
-    setReactieBezig(false)
+    if (actieveFilter === 'all' || actieveFilter === 'nieuwste') return true
+    if (actieveFilter === 'docenten') return kaart.type === 'materiaal'
+    return kaart.klasId === actieveFilter
+  })
+
+  if (loading) {
+    return (
+      <main style={{ minHeight: '100vh', backgroundColor: '#0D1B2A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ fontFamily: 'var(--font-apercu)', color: '#8FA3B8' }}>Laden...</p>
+      </main>
+    )
   }
-
-  const heeftReactie = (sessieId: string, type: string) =>
-    interacties.some(i => i.sessie_id === sessieId && i.auteur_id === userId && i.type === type)
-
-  if (loading) return (
-    <main className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F3E7DD' }}>
-      <p style={{ color: '#0766C6' }}>Laden...</p>
-    </main>
-  )
-
-  const totaalTijd = eigenSessies.reduce((a, s) => a + (s.duur || 0), 0)
-  const streak = berekenStreak(eigenSessies)
-
-  // Periode grens bepalen
-  const periodeGrens = periodeFilter === 'week'
-    ? new Date(Date.now() - 7 * 86400000).toISOString()
-    : periodeFilter === 'maand'
-    ? new Date(Date.now() - 30 * 86400000).toISOString()
-    : null
-
-  // Feed samenstellen op basis van actieve filter
-  let feedItems: SessieItem[] = []
-  if (filter === 'eigen') {
-    feedItems = periodeGrens
-      ? eigenSessies.filter(s => s.created_at >= periodeGrens)
-      : eigenSessies
-  } else if (filter === 'alles') {
-    const groepGefilterd = periodeGrens
-      ? groepSessies.filter(s => s.created_at >= periodeGrens)
-      : groepSessies
-    const eigenGefilterd = periodeGrens
-      ? eigenSessies.filter(s => s.created_at >= periodeGrens)
-      : eigenSessies
-    feedItems = [...eigenGefilterd, ...groepGefilterd]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-  } else {
-    // Filter op klasId
-    const groepGefilterd = groepSessies.filter(s => s.klasId === filter &&
-      (!periodeGrens || s.created_at >= periodeGrens))
-    const eigenGefilterd = periodeGrens
-      ? eigenSessies.filter(s => s.created_at >= periodeGrens)
-      : eigenSessies
-    feedItems = [...eigenGefilterd, ...groepGefilterd]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-  }
-
-  // Groepeer op datum
-  const groepen: Record<string, SessieItem[]> = {}
-  for (const s of feedItems) {
-    const dag = s.created_at.slice(0, 10)
-    if (!groepen[dag]) groepen[dag] = []
-    groepen[dag].push(s)
-  }
-  const gesorteerdeData = Object.keys(groepen).sort().reverse()
 
   return (
-    <main className="min-h-screen pb-28" style={{ backgroundColor: '#F3E7DD' }}>
+    <main style={{ minHeight: '100vh', backgroundColor: '#0D1B2A', paddingBottom: 'calc(90px + env(safe-area-inset-bottom, 0px))' }}>
+      <div style={{ maxWidth: 430, margin: '0 auto', paddingLeft: 20, paddingRight: 20, paddingTop: 'calc(env(safe-area-inset-top, 16px) + 16px)' }}>
 
-      {/* Header */}
-      <div style={{ backgroundColor: '#0766C6' }}>
-        <div className="max-w-2xl mx-auto px-6 pt-10 pb-5">
-          <h1 className="text-2xl font-bold text-white">Logboek</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#93c5fd' }}>Jouw oefenactiviteit</p>
+        <h1 style={{ fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 32, color: '#0766C6', margin: '0 0 16px' }}>
+          Klasgroep
+        </h1>
 
-          {/* Activiteitsfilter — mijn / alles */}
-          <div className="flex gap-2 mt-4">
-            {[
-              { id: 'eigen', label: 'Mijn sessies' },
-              ...(groepSessies.length > 0 ? [{ id: 'alles', label: 'Alle activiteit' }] : []),
-            ].map(f => (
-              <button key={f.id} onClick={() => setFilter(f.id as any)}
-                className="flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition-all"
-                style={{
-                  backgroundColor: (filter === f.id || (f.id === 'alles' && filter !== 'eigen' && klassen.some(k => k.id === filter))) ? '#fff' : 'rgba(255,255,255,0.18)',
-                  color: (filter === f.id || (f.id === 'alles' && filter !== 'eigen' && klassen.some(k => k.id === filter))) ? '#0766C6' : 'rgba(255,255,255,0.85)',
-                }}>
-                {f.label}
-              </button>
-            ))}
+        {/* Twee segment knoppen */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+          <div style={{
+            flex: 1, borderRadius: 999, padding: '14px 0', textAlign: 'center',
+            backgroundColor: '#0766C6', fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 14, color: '#fff',
+          }}>
+            Activiteiten bekijken
           </div>
-
-          {/* Groepsfilter — per klas (enkel zichtbaar als groepen beschikbaar zijn) */}
-          {klassen.length > 0 && filter !== 'eigen' && (
-            <div className="flex gap-2 mt-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-              <button onClick={() => setFilter('alles')}
-                className="flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all"
-                style={{
-                  backgroundColor: filter === 'alles' ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)',
-                  color: filter === 'alles' ? '#fff' : 'rgba(255,255,255,0.6)',
-                  border: filter === 'alles' ? '1px solid rgba(255,255,255,0.5)' : '1px solid rgba(255,255,255,0.2)',
-                }}>
-                Alle groepen
-              </button>
-              {klassen.map(k => (
-                <button key={k.id} onClick={() => setFilter(k.id)}
-                  className="flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium transition-all"
-                  style={{
-                    backgroundColor: filter === k.id ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.12)',
-                    color: filter === k.id ? '#fff' : 'rgba(255,255,255,0.6)',
-                    border: filter === k.id ? '1px solid rgba(255,255,255,0.5)' : '1px solid rgba(255,255,255,0.2)',
-                  }}>
-                  {k.naam}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="max-w-2xl mx-auto px-6 mt-5 flex flex-col gap-4">
-
-        {/* Stats strip */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-2xl p-4 text-center" style={{ backgroundColor: '#0766C6' }}>
-            <p className="text-2xl font-bold text-white">{eigenSessies.length}</p>
-            <p className="text-xs mt-1" style={{ color: '#93c5fd' }}>Sessies</p>
-          </div>
-          <div className="rounded-2xl p-4 text-center" style={{ backgroundColor: '#fff' }}>
-            <p className="text-xl font-bold" style={{ color: '#0766C6' }}>{formatTotaal(totaalTijd)}</p>
-            <p className="text-xs mt-1" style={{ color: '#888' }}>Totaal</p>
-          </div>
-          <div className="rounded-2xl p-4 text-center"
-            style={{ backgroundColor: streak > 0 ? '#FF560D' : '#fff' }}>
-            <p className="text-2xl font-bold" style={{ color: streak > 0 ? '#fff' : '#bbb' }}>
-              {streak > 0 ? `🔥 ${streak}` : '—'}
-            </p>
-            <p className="text-xs mt-1" style={{ color: streak > 0 ? '#ffd0b5' : '#bbb' }}>Streak</p>
-          </div>
+          <button
+            onClick={() => router.push('/venster')}
+            style={{
+              flex: 1, borderRadius: 999, padding: '14px 0', textAlign: 'center',
+              backgroundColor: '#FF560D', border: 'none', cursor: 'pointer',
+              fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 14, color: '#fff',
+            }}
+          >
+            Classview →
+          </button>
         </div>
 
-        {/* Periode filter */}
-        <div className="flex gap-2">
-          {([['week', 'Deze week'], ['maand', 'Deze maand'], ['alles', 'Alles']] as const).map(([val, label]) => (
-            <button key={val} onClick={() => setPeriodeFilter(val)}
-              className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all"
-              style={{
-                backgroundColor: periodeFilter === val ? '#333' : '#fff',
-                color: periodeFilter === val ? '#fff' : '#888',
+        {/* Zoekbalk */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          backgroundColor: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 28, height: 48, padding: '0 16px', marginBottom: 14,
+        }}>
+          <IconZoek />
+          <input
+            type="text"
+            placeholder="Search"
+            value={zoekterm}
+            onChange={(e) => setZoekterm(e.target.value)}
+            style={{ flex: 1, border: 'none', outline: 'none', fontFamily: 'var(--font-apercu)', fontSize: 15, color: '#fff', backgroundColor: 'transparent' }}
+          />
+        </div>
+
+        {/* Filter pills */}
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 20, scrollbarWidth: 'none' }}>
+          {filterPills.map((pill) => {
+            const geselecteerd = actieveFilter === pill.id
+            return (
+              <button key={pill.id} onClick={() => setActieveFilter(pill.id)} style={{
+                flexShrink: 0, borderRadius: 999, padding: '7px 16px', fontSize: 13,
+                fontFamily: 'var(--font-apercu)', fontWeight: geselecteerd ? 700 : 500,
+                cursor: 'pointer', border: 'none',
+                backgroundColor: geselecteerd ? '#FF560D' : '#0D1B2A',
+                color: 'white',
+                outline: geselecteerd ? 'none' : '1.5px solid rgba(255,255,255,0.15)',
               }}>
-              {label}
-            </button>
-          ))}
+                {pill.label}
+              </button>
+            )
+          })}
         </div>
 
-        {/* Feed */}
-        {feedItems.length === 0 ? (
-          <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: '#fff' }}>
-            <p className="text-4xl mb-3">🎵</p>
-            <p className="font-semibold" style={{ color: '#333' }}>
-              {filter === 'eigen' ? 'Nog geen sessies' : 'Geen activiteit gevonden'}
+        {geenKlassen && (
+          <div style={{ backgroundColor: 'rgba(7,102,198,0.15)', border: '1px solid rgba(7,102,198,0.3)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0766C6" strokeWidth="2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <p style={{ fontFamily: 'var(--font-apercu)', fontSize: 13, color: '#8FA3B8', margin: 0 }}>
+              Vraag je leraar om je toe te voegen aan een klas om klasgenoten te zien.
             </p>
-            <p className="text-sm mt-1" style={{ color: '#888' }}>
-              {filter === 'eigen'
-                ? 'Start je eerste oefensessie vanuit het Oefenen-tabblad.'
-                : 'Geen activiteit in deze periode of groep.'}
+          </div>
+        )}
+
+        {gefilterdeeFeed.length === 0 ? (
+          <div style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: '40px 24px', textAlign: 'center' }}>
+            <p style={{ fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 16, color: '#fff', margin: '0 0 8px' }}>Geen activiteit gevonden</p>
+            <p style={{ fontFamily: 'var(--font-apercu)', fontSize: 14, color: '#8FA3B8', margin: 0 }}>
+              {zoekterm ? 'Probeer een andere zoekterm.' : actieveFilter === 'docenten' ? 'Geen lesmateriaal gevonden.' : 'Er is nog geen activiteit in deze groep.'}
             </p>
-            {filter === 'eigen' && (
-              <button onClick={() => router.push('/partituren')}
-                className="mt-4 px-6 py-3 rounded-2xl text-white font-semibold text-sm"
-                style={{ backgroundColor: '#0766C6' }}>
-                Naar oefenen
-              </button>
-            )}
           </div>
         ) : (
-          <div className="flex flex-col gap-5">
-            {gesorteerdeData.map(dag => (
-              <div key={dag}>
-                {/* Datum scheiding */}
-                <div className="flex items-center gap-3 mb-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide flex-shrink-0"
-                    style={{ color: '#888' }}>
-                    {datumLabel(dag)}
-                  </p>
-                  <div className="flex-1 h-px" style={{ backgroundColor: '#e5e5e5' }} />
-                  <p className="text-xs flex-shrink-0" style={{ color: '#bbb' }}>
-                    {formatTotaal(groepen[dag].filter(s => s.isEigen).reduce((a, s) => a + (s.duur || 0), 0))}
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  {groepen[dag].map(sessie => {
-                    const sessieInteracties = interacties.filter(i => i.sessie_id === sessie.id)
-                    const kudos = sessieInteracties.filter(i => i.type === 'student_kudo')
-                    const boosts = sessieInteracties.filter(i => i.type === 'student_boost')
-                    const comments = sessieInteracties.filter(
-                      i => i.type === 'student_reactie' || i.type === 'leraar_reactie'
-                    )
-                    const heeftKudo = heeftReactie(sessie.id, 'student_kudo')
-                    const heeftBoost = heeftReactie(sessie.id, 'student_boost')
-                    const laat = toonReactieInput === sessie.id
-
-                    return (
-                      <div key={sessie.id} className="rounded-2xl overflow-hidden shadow-sm"
-                        style={{ backgroundColor: '#fff' }}>
-
-                        {/* Gekleurde rand */}
-                        <div className="h-1 w-full"
-                          style={{ backgroundColor: sessie.isEigen ? '#FF560D' : '#0766C6' }} />
-
-                        <div className="p-4">
-                          {/* Student naam (als niet eigen) */}
-                          {!sessie.isEigen && (
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                                style={{ backgroundColor: '#0766C6' }}>
-                                {sessie.studentNaam.slice(0, 1)}
-                              </div>
-                              <p className="text-xs font-bold" style={{ color: '#0766C6' }}>
-                                {sessie.studentNaam}
-                              </p>
-                            </div>
-                          )}
-
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <p className="font-bold text-sm truncate"
-                                style={{ color: sessie.isEigen ? '#FF560D' : '#0766C6' }}>
-                                {sessie.partituren?.titel || 'Vrije sessie'}
-                              </p>
-                              {sessie.partituren?.componist && (
-                                <p className="text-xs mt-0.5 truncate" style={{ color: '#888' }}>
-                                  {sessie.partituren.componist}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              {sessie.gevoel && (
-                                <span className="text-lg">{GEVOEL_EMOJI[sessie.gevoel] || '🎵'}</span>
-                              )}
-                              <p className="text-xs" style={{ color: '#bbb' }}>
-                                {new Date(sessie.created_at).toLocaleTimeString('nl-BE', {
-                                  hour: '2-digit', minute: '2-digit'
-                                })}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Chips */}
-                          <div className="flex items-center gap-2 mt-3 flex-wrap">
-                            <span className="text-xs px-2.5 py-1 rounded-full font-medium"
-                              style={{ backgroundColor: '#F3E7DD', color: '#0766C6' }}>
-                              ⏱ {formatDuur(sessie.duur || 0)}
-                            </span>
-                            {sessie.bpm && (
-                              <span className="text-xs px-2.5 py-1 rounded-full"
-                                style={{ backgroundColor: '#F3E7DD', color: '#666' }}>
-                                ♩ {sessie.bpm} BPM
-                              </span>
-                            )}
-                            {sessie.opname_url && (
-                              <span className="text-xs px-2.5 py-1 rounded-full"
-                                style={{ backgroundColor: '#F3E7DD', color: '#888' }}>
-                                🎙 Opname
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Tops quote */}
-                          {sessie.tops && (
-                            <p className="text-xs mt-2 italic leading-relaxed" style={{ color: '#555' }}>
-                              "{sessie.tops.slice(0, 100)}{sessie.tops.length > 100 ? '…' : ''}"
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Interacties — bestaande reacties */}
-                        {(kudos.length > 0 || boosts.length > 0 || comments.length > 0) && (
-                          <div className="px-4 pb-3 flex flex-col gap-2"
-                            style={{ borderTop: '1px solid #F3E7DD' }}>
-                            {/* Kudos + boosts tellers */}
-                            {(kudos.length > 0 || boosts.length > 0) && (
-                              <div className="flex gap-2 pt-3">
-                                {kudos.length > 0 && (
-                                  <span className="text-xs px-2.5 py-1 rounded-full font-medium"
-                                    style={{ backgroundColor: '#F3E7DD', color: '#555' }}>
-                                    👍 {kudos.length}
-                                    {kudos.length <= 3 && (
-                                      <span className="ml-1" style={{ color: '#bbb' }}>
-                                        {kudos.slice(0, 2).map(k => k.auteurNaam.split(' ')[0]).join(', ')}
-                                      </span>
-                                    )}
-                                  </span>
-                                )}
-                                {boosts.length > 0 && (
-                                  <span className="text-xs px-2.5 py-1 rounded-full font-medium"
-                                    style={{ backgroundColor: '#FFF0EB', color: '#FF560D' }}>
-                                    🔥 {boosts.length}
-                                    {boosts.length <= 3 && (
-                                      <span className="ml-1" style={{ color: '#bbb' }}>
-                                        {boosts.slice(0, 2).map(k => k.auteurNaam.split(' ')[0]).join(', ')}
-                                      </span>
-                                    )}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            {/* Tekstcomments */}
-                            {comments.map(c => (
-                              <div key={c.id} className="flex items-start gap-2 pt-1">
-                                <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                                  style={{ backgroundColor: c.type === 'leraar_reactie' ? '#FF560D' : '#0766C6' }}>
-                                  {c.auteurNaam.slice(0, 1)}
-                                </div>
-                                <div>
-                                  <span className="text-xs font-semibold" style={{ color: '#333' }}>
-                                    {c.auteurNaam.split(' ')[0]}
-                                    {c.type === 'leraar_reactie' && (
-                                      <span className="ml-1 text-xs font-normal" style={{ color: '#FF560D' }}>
-                                        (leraar)
-                                      </span>
-                                    )}
-                                  </span>
-                                  <p className="text-xs mt-0.5 leading-relaxed" style={{ color: '#555' }}>
-                                    {c.inhoud}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Interactie-acties */}
-                        <div className="px-4 py-3 flex items-center gap-2"
-                          style={{ borderTop: '1px solid #F3E7DD' }}>
-                          {/* Kudo */}
-                          <button
-                            onClick={() => !heeftKudo && geefReactie(sessie.id, '👍', 'student_kudo')}
-                            className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold flex-shrink-0"
-                            style={{
-                              backgroundColor: heeftKudo ? '#0766C6' : '#F3E7DD',
-                              color: heeftKudo ? '#fff' : '#555',
-                            }}>
-                            👍 {heeftKudo ? 'Gegeven' : 'Kudo'}
-                          </button>
-
-                          {/* Boost */}
-                          <button
-                            onClick={() => !heeftBoost && geefReactie(sessie.id, '🔥', 'student_boost')}
-                            className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold flex-shrink-0"
-                            style={{
-                              backgroundColor: heeftBoost ? '#FF560D' : '#F3E7DD',
-                              color: heeftBoost ? '#fff' : '#555',
-                            }}>
-                            🔥 {heeftBoost ? 'Geboosted' : 'Boost'}
-                          </button>
-
-                          {/* Reactie toggle */}
-                          <button
-                            onClick={() => setToonReactieInput(laat ? null : sessie.id)}
-                            className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold flex-shrink-0"
-                            style={{ backgroundColor: '#F3E7DD', color: '#555' }}>
-                            💬
-                          </button>
-
-                          {/* Naar detail (eigen) */}
-                          {sessie.isEigen && (
-                            <button onClick={() => router.push(`/sessies/${sessie.id}`)}
-                              className="ml-auto text-xs font-medium flex-shrink-0"
-                              style={{ color: '#0766C6' }}>
-                              Details →
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Reactie input */}
-                        {laat && (
-                          <div className="px-4 pb-4 flex gap-2">
-                            <input
-                              type="text"
-                              placeholder="Schrijf een reactie..."
-                              value={reactieTekst[sessie.id] || ''}
-                              onChange={e => setReactieTekst(prev => ({ ...prev, [sessie.id]: e.target.value }))}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter' && reactieTekst[sessie.id]?.trim()) {
-                                  geefReactie(sessie.id, reactieTekst[sessie.id], 'student_reactie')
-                                }
-                              }}
-                              autoFocus
-                              className="flex-1 px-3 py-2 rounded-xl text-xs outline-none"
-                              style={{ backgroundColor: '#F3E7DD', color: '#333' }} />
-                            <button
-                              onClick={() => geefReactie(sessie.id, reactieTekst[sessie.id] || '', 'student_reactie')}
-                              disabled={!reactieTekst[sessie.id]?.trim() || reactieBezig}
-                              className="px-3 py-2 rounded-xl text-xs font-medium text-white"
-                              style={{
-                                backgroundColor: reactieTekst[sessie.id]?.trim() ? '#0766C6' : '#ccc',
-                              }}>
-                              Stuur
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {gefilterdeeFeed.map((kaart) => {
+              if (kaart.type === 'sessie') return (
+                <SessieKaart
+                  key={kaart.id}
+                  kaart={kaart}
+                  onBekijken={() => router.push(`/sessies/${kaart.id}`)}
+                />
+              )
+              if (kaart.type === 'materiaal') return <LeraarMateriaalkKaart key={kaart.id} kaart={kaart} />
+              if (kaart.type === 'achievement') return <AchievementKaart key={kaart.id} kaart={kaart} />
+              return null
+            })}
           </div>
         )}
       </div>
+
       <BottomNav />
     </main>
   )

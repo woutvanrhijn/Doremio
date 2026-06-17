@@ -1,42 +1,40 @@
-import Link from 'next/link'
+"use client";
 
-export default function Home() {
+import Link from "next/link";
+import Image from "next/image";
+
+export default function SplashPage() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center"
-      style={{ backgroundColor: '#F3E7DD' }}>
+    <main className="min-h-dvh bg-warm-white flex flex-col items-center justify-center px-6">
 
-      <div className="w-20 h-20 rounded-2xl mb-6 mx-auto flex items-center justify-center"
-        style={{ backgroundColor: '#0766C6' }}>
-        <span className="text-white text-4xl">♪</span>
+      {/* Logo */}
+      <div className="mb-20">
+        <Image
+          src="/images/doremio-logo2.png"
+          alt="Doremio"
+          width={220}
+          height={160}
+          priority
+        />
       </div>
 
-      <h1 className="text-4xl font-bold mb-2" style={{ color: '#0766C6' }}>
-        Doremio
-      </h1>
-      <p className="text-lg mb-12" style={{ color: '#666' }}>
-        Jouw muzikale leeromgeving
-      </p>
-
-      <div className="flex flex-col gap-4 w-full max-w-sm px-6">
-        <Link href="/auth/login">
-          <button className="w-full py-4 px-6 rounded-2xl text-white font-semibold text-lg transition-transform hover:scale-105"
-            style={{ backgroundColor: '#0766C6' }}>
-            Inloggen
-          </button>
+      {/* Actions */}
+      <div className="flex flex-col items-center gap-4 w-full max-w-xs">
+        <Link
+          href="/onboarding"
+          className="w-full flex items-center justify-center bg-yellow text-navy font-apercu font-bold text-lg rounded-full py-4 px-8 active:scale-95 transition-transform duration-100"
+        >
+          START
         </Link>
 
-        <Link href="/auth/registreren">
-          <button className="w-full py-4 px-6 rounded-2xl text-white font-semibold text-lg transition-transform hover:scale-105"
-            style={{ backgroundColor: '#FF560D' }}>
-            Registreren
-          </button>
+        <Link
+          href="/auth/login"
+          className="font-apercu font-bold text-sm text-primary tracking-widest uppercase"
+        >
+          IK HEB AL EEN ACCOUNT
         </Link>
       </div>
-
-      <p className="mt-12 text-sm" style={{ color: '#999' }}>
-        Deeltijds Kunstonderwijs Vlaanderen
-      </p>
 
     </main>
-  )
+  );
 }

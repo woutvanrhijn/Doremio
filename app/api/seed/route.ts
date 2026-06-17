@@ -2,7 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
 const studenten = [
-  { email: 'lena.peeters@doremio.test',       naam: 'Lena Peeters',       instrument: 'Piano',      klas: '1A' },
+  { email: 'zoe.dewolf@doremio.test',          naam: 'Zoë de Wolf',         instrument: 'Piano',      klas: '1A' },
+  { email: 'lena.peeters@doremio.test',        naam: 'Lena Peeters',        instrument: 'Piano',      klas: '1A' },
   { email: 'noah.janssen@doremio.test',        naam: 'Noah Janssen',        instrument: 'Viool',      klas: '1A' },
   { email: 'emma.claes@doremio.test',          naam: 'Emma Claes',          instrument: 'Fluit',      klas: '1A' },
   { email: 'lucas.vermeersch@doremio.test',    naam: 'Lucas Vermeersch',    instrument: 'Gitaar',     klas: '1A' },
@@ -14,8 +15,20 @@ const studenten = [
   { email: 'thomas.vandenberghe@doremio.test', naam: 'Thomas Vandenberghe', instrument: 'Gitaar',     klas: '1B' },
 ]
 
-// Sessies per student: [duur in sec, bpm, tops, tips, dagen geleden]
-const sessiesPerStudent: Record<string, [number, number, string, string, number][]> = {
+// Sessies per student: [duur in sec, bpm, tops, tips, dagen geleden, gevoel?, partituurIndex?]
+type SessieRij = [number, number, string, string, number, string?, number?]
+const sessiesPerStudent: Record<string, SessieRij[]> = {
+  'zoe.dewolf@doremio.test': [
+    [1080, 76, 'De melodie klinkt veel vloeiender!',      'De overgang naar de brug is nog haperend.',     1,  'Goed bezig',  0],
+    [1320, 80, 'Heel de eerste pagina uit het hoofd.',    'Linkerhand snelheid verder opbouwen.',          2,  'Super goed!', 1],
+    [900,  74, 'Lekker geoefend na school.',              'Niet te snel gaan aan het einde.',              4,  'Oké',         2],
+    [1200, 82, 'De moeilijke passage lukt nu bijna!',     'Pianissimo stukken verdienen meer aandacht.',   6,  'Super goed!', 0],
+    [840,  78, 'Korte maar geconcentreerde sessie.',      'Morgen het tweede deel aanpakken.',             9,  'Goed bezig',  1],
+    [960,  76, 'Ritme zat er heel goed in vandaag.',      'Nog werken aan het pedaalgebruik.',             12, 'Goed bezig',  2],
+    [1080, 80, 'Bijna een uur gespeeld — persoonlijk record!', 'Pauze nemen als handen moe worden.',      16, 'Super goed!', 0],
+    [720,  74, 'Korte herhalingssessie na les.',          'Volgende keer langer doorspelen.',              19, 'Oké',         1],
+    [1140, 82, 'Alles van begin tot einde gespeeld!',     'Meer aandacht voor de dynamiek.',               23, 'Super goed!', 2],
+  ],
   'lena.peeters@doremio.test': [
     [960, 72, 'De toonladder ging veel vlotter vandaag!', 'De overgang naar het tweede deel moet beter.', 1],
     [1200, 76, 'Ik kon het hele stuk van buiten spelen.', 'Mijn linkerhand moet nog sterker worden.', 2],
@@ -108,9 +121,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ bericht: 'Test data bestaat al. Gebruik /api/seed/cleanup om te verwijderen.' })
   }
 
-  // Haal eerste partituur op
-  const { data: partituurData } = await admin.from('partituren').select('id').limit(1).single()
-  const partituurId = partituurData?.id || null
+  // Haal alle partituren op
+  const { data: allePartituren } = await admin.from('partituren').select('id').limit(6)
 
   const aangemaakteIds: Record<string, string> = {}
 
@@ -159,15 +171,20 @@ export async function GET(request: Request) {
     const studentId = aangemaakteIds[student.email]
     if (!studentId) continue
     const sessies = sessiesPerStudent[student.email] || []
-    for (const [duur, bpm, tops, tips, dagenGeleden] of sessies) {
+    for (const sessie of sessies) {
+      const [duur, bpm, tops, tips, dagenGeleden, gevoel, partituurIdx] = sessie as SessieRij
       const datum = new Date(Date.now() - dagenGeleden * 24 * 60 * 60 * 1000).toISOString()
+      const partId = allePartituren?.[
+        typeof partituurIdx === 'number' ? partituurIdx % (allePartituren?.length || 1) : 0
+      ]?.id || allePartituren?.[0]?.id || null
       await admin.from('oefensessies').insert({
         student_id: studentId,
-        partituur_id: partituurId,
+        partituur_id: partId,
         duur,
         bpm,
         tops,
         tips,
+        gevoel: gevoel || null,
         status: 'afgerond',
         created_at: datum,
       })

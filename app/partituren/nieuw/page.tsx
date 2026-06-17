@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
+import BottomNav from '@/components/BottomNav'
 
 function audioBufferNaarWav(buffer: AudioBuffer): Blob {
   const k = buffer.numberOfChannels, sr = buffer.sampleRate, ds = buffer.length * k * 2
@@ -22,19 +24,38 @@ function audioBufferNaarWav(buffer: AudioBuffer): Blob {
   return new Blob([ab], { type: 'audio/wav' })
 }
 
-type Stap = 'keuze' | 'verwerken' | 'gegevens' | 'klas' | 'leraar_track' | 'instructies' | 'opslaan'
+type Stap = 'keuze' | 'verwerken' | 'formulier' | 'audio' | 'overzicht'
+type AudioTab = 'metronoom' | 'partituur' | 'track' | 'aanwijzingen'
+type Doelstelling = { id: string; naam: string; duur: string; beschrijving: string; aangevinkt: boolean }
 
-const WIZARD_STAPPEN: Array<Exclude<Stap, 'keuze' | 'verwerken'>> = [
-  'gegevens', 'klas', 'leraar_track', 'instructies', 'opslaan'
-]
+const WIZARD_STAPPEN: Array<Exclude<Stap, 'keuze' | 'verwerken'>> = ['formulier', 'audio', 'overzicht']
 
-const WIZARD_LABELS: Record<string, string> = {
-  gegevens: 'Gegevens',
-  klas: 'Klas',
-  leraar_track: 'Opname',
-  instructies: 'Content',
-  opslaan: 'Opslaan',
+const GOLF = [4, 7, 12, 20, 28, 22, 16, 10, 18, 32, 26, 15, 10, 22, 30, 20, 14, 26, 36, 28, 18, 12, 20, 28, 22, 14, 8, 16, 24, 18, 12, 8, 10, 18, 14]
+const MAX_GOLF = 36
+
+function Golfvorm({ split = 0.5, hoogte = 56 }: { split?: number; hoogte?: number }) {
+  const barW = 5, gap = 3, total = GOLF.length
+  const svgW = total * (barW + gap)
+  const splitX = svgW * split
+  return (
+    <div style={{ backgroundColor: '#fff', borderRadius: 40, padding: '8px 16px', overflow: 'hidden' }}>
+      <svg width="100%" viewBox={`0 0 ${svgW} ${hoogte}`} style={{ display: 'block' }} preserveAspectRatio="none">
+        {GOLF.map((h, i) => {
+          const x = i * (barW + gap)
+          const barH = (h / MAX_GOLF) * hoogte * 0.85
+          const y = (hoogte - barH) / 2
+          const kleur = x < splitX ? '#0766C6' : '#FF560D'
+          return <rect key={i} x={x} y={y} width={barW} height={barH} rx={2.5} fill={kleur} />
+        })}
+        <line x1={splitX} y1={0} x2={splitX} y2={hoogte} stroke="#FF560D" strokeWidth={2} />
+      </svg>
+    </div>
+  )
 }
+
+const DONKER: React.CSSProperties = { backgroundColor: '#0D1B2A', minHeight: '100dvh', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))' }
+const INPUT_STIJL: React.CSSProperties = { backgroundColor: 'rgba(255,255,255,0.07)', border: '1.5px solid #FF560D', borderRadius: 12, color: '#fff', padding: '11px 14px', width: '100%', outline: 'none', fontFamily: 'inherit', fontSize: 14 }
+const LABEL_STIJL: React.CSSProperties = { color: '#fff', fontWeight: 700, fontSize: 14, marginBottom: 6, display: 'block' }
 
 export default function NieuwePartituur() {
   const [stap, setStap] = useState<Stap>('keuze')
@@ -48,6 +69,11 @@ export default function NieuwePartituur() {
   const [fout, setFout] = useState('')
   const [klassen, setKlassen] = useState<{ id: string; naam: string }[]>([])
   const [geselecteerdeKlas, setGeselecteerdeKlas] = useState<string>('')
+  const [doelstellingen, setDoelstellingen] = useState<Doelstelling[]>([
+    { id: '1', naam: 'Akkoorden Progressie', duur: '5 min', beschrijving: 'Overgang akkoorden oefenen in eigen tempo', aangevinkt: false },
+    { id: '2', naam: 'Doorspelen Repetitie', duur: '10 min', beschrijving: 'Overgang akkoorden oefenen in eigen tempo', aangevinkt: false },
+  ])
+  const [actieveAudioTab, setActieveAudioTab] = useState<AudioTab>('track')
 
   // Opname
   const [opnameActief, setOpnameActief] = useState(false)
@@ -68,8 +94,8 @@ export default function NieuwePartituur() {
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
-  const cameraVideoRef = useRef<HTMLVideoElement | null>(null)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const audioBestandInput = useRef<HTMLInputElement>(null)
   const bestandInput = useRef<HTMLInputElement>(null)
@@ -88,16 +114,6 @@ export default function NieuwePartituur() {
     }
   }, [])
 
-  useEffect(() => {
-    if (cameraActief && cameraVideoRef.current && cameraStreamRef.current) {
-      cameraVideoRef.current.srcObject = cameraStreamRef.current
-      cameraVideoRef.current.play().catch(() => {})
-    }
-  }, [cameraActief])
-
-  const wizardIndex = WIZARD_STAPPEN.indexOf(stap as any)
-  const isWizardStap = wizardIndex >= 0
-
   const volgende = () => {
     const i = WIZARD_STAPPEN.indexOf(stap as any)
     if (i >= 0 && i < WIZARD_STAPPEN.length - 1) setStap(WIZARD_STAPPEN[i + 1])
@@ -109,89 +125,56 @@ export default function NieuwePartituur() {
     else setStap('keuze')
   }
 
-  const formatTijd = (s: number) =>
-    `${Math.floor(s / 60).toString().padStart(2, '0')}:${Math.floor(s % 60).toString().padStart(2, '0')}`
+  const formatTijdLang = (s: number) =>
+    `00:${Math.floor(s / 60).toString().padStart(2, '0')}:${Math.floor(s % 60).toString().padStart(2, '0')}`
 
   const toggleCamera = async () => {
     if (cameraActief) {
       cameraStreamRef.current?.getTracks().forEach(t => t.stop())
       cameraStreamRef.current = null
-      if (cameraVideoRef.current) cameraVideoRef.current.srcObject = null
+      if (videoRef.current) videoRef.current.srcObject = null
       setCameraActief(false)
     } else {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
         cameraStreamRef.current = stream
+        if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play() }
         setCameraActief(true)
-      } catch {
-        alert('Camera toegang geweigerd. Controleer je browserinstellingen.')
-      }
+      } catch { alert('Camera toegang geweigerd.') }
     }
   }
 
   const startOpname = async () => {
     try {
-      const videoOpname = cameraActief
-      cameraStreamRef.current?.getTracks().forEach(t => t.stop())
-      cameraStreamRef.current = null
-
-      const constraints = videoOpname ? { audio: true, video: true } : { audio: true }
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      audioStreamRef.current = stream
-
-      if (videoOpname) {
-        cameraStreamRef.current = stream
-        if (cameraVideoRef.current) {
-          cameraVideoRef.current.srcObject = stream
-          cameraVideoRef.current.play().catch(() => {})
-        }
-      }
-
-      let mime = ''
-      if (videoOpname) {
-        mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus'
-          : MediaRecorder.isTypeSupported('video/webm') ? 'video/webm'
-          : MediaRecorder.isTypeSupported('video/mp4') ? 'video/mp4' : ''
+      let stream: MediaStream
+      if (cameraActief && cameraStreamRef.current) {
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const tracks = [...cameraStreamRef.current.getVideoTracks(), ...audioStream.getAudioTracks()]
+        stream = new MediaStream(tracks)
+        audioStreamRef.current = audioStream
       } else {
-        mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
-          : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : ''
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        audioStreamRef.current = stream
       }
-
+      const videoMime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus'
+        : MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : ''
+      const audioMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : ''
+      const heeftVideo = cameraActief && stream.getVideoTracks().length > 0
+      const mime = heeftVideo ? videoMime : audioMime
       const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream)
       chunksRef.current = []
       rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
       rec.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: rec.mimeType || (videoOpname ? 'video/webm' : 'audio/webm') })
-        setMediaBlob(blob)
-        setMediaUrl(URL.createObjectURL(blob))
-        setIsVideo(videoOpname)
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || 'audio/webm' })
+        setMediaBlob(blob); setMediaUrl(URL.createObjectURL(blob)); setIsVideo(heeftVideo)
         stream.getTracks().forEach(t => t.stop())
         audioStreamRef.current = null
-        cameraStreamRef.current = null
-        if (videoOpname) setCameraActief(false)
       }
-      recorderRef.current = rec
-      rec.start(100)
-      setOpnameTijd(0)
-      timerRef.current = setInterval(() => setOpnameTijd(t => t + 1), 1000)
-      setOpnameActief(true)
-      setGepauzeerd(false)
-    } catch {
-      alert('Microfoon/camera toegang geweigerd.')
-    }
-  }
-
-  const annuleerOpname = () => {
-    if (recorderRef.current) {
-      recorderRef.current.onstop = () => {}
-      recorderRef.current.stop()
-    }
-    audioStreamRef.current?.getTracks().forEach(t => t.stop())
-    audioStreamRef.current = null
-    cameraStreamRef.current = null
-    if (timerRef.current) clearInterval(timerRef.current)
-    if (cameraActief) setCameraActief(false)
-    setOpnameActief(false); setGepauzeerd(false); setOpnameTijd(0)
+      recorderRef.current = rec; rec.start(100)
+      setOpnameTijd(0); timerRef.current = setInterval(() => setOpnameTijd(t => t + 1), 1000)
+      setOpnameActief(true); setGepauzeerd(false)
+    } catch { alert('Microfoon toegang geweigerd.') }
   }
 
   const pauzeerOpname = () => {
@@ -213,8 +196,7 @@ export default function NieuwePartituur() {
   const stopOpname = () => {
     recorderRef.current?.stop()
     if (timerRef.current) clearInterval(timerRef.current)
-    setOpnameActief(false)
-    setGepauzeerd(false)
+    setOpnameActief(false); setGepauzeerd(false)
   }
 
   const opnieuwOpnemen = () => {
@@ -270,13 +252,29 @@ export default function NieuwePartituur() {
           setReferenties((await rr.json()).links || [])
         }
       } catch { /* stille fout */ }
-      setStap('gegevens')
+      setStap('formulier')
     }
     reader.readAsDataURL(file)
   }
 
   const handleBestandKeuze = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]; if (f) verwerkBestand(f)
+  }
+
+  const voegDoelstellingToe = () => {
+    setDoelstellingen(prev => [...prev, { id: Date.now().toString(), naam: '', duur: '5 min', beschrijving: '', aangevinkt: false }])
+  }
+
+  const updateDoelstelling = (id: string, veld: keyof Doelstelling, waarde: string) => {
+    setDoelstellingen(prev => prev.map(d => d.id === id ? { ...d, [veld]: waarde } : d))
+  }
+
+  const verwijderDoelstelling = (id: string) => {
+    setDoelstellingen(prev => prev.filter(d => d.id !== id))
+  }
+
+  const toggleDoelstelling = (id: string) => {
+    setDoelstellingen(prev => prev.map(d => d.id === id ? { ...d, aangevinkt: !d.aangevinkt } : d))
   }
 
   const uploaden = async () => {
@@ -310,538 +308,604 @@ export default function NieuwePartituur() {
       }).select().single()
       if (de) throw de
 
+      const annotaties = []
       if (annotatie.trim()) {
-        await supabase.from('annotaties').insert({ partituur_id: p.id, auteur_id: user.id, inhoud: annotatie, type: 'leraar' })
+        annotaties.push({ partituur_id: p.id, auteur_id: user.id, inhoud: annotatie, type: 'leraar' })
       }
+      if (doelstellingen.length > 0) {
+        annotaties.push({ partituur_id: p.id, auteur_id: user.id, inhoud: JSON.stringify(doelstellingen), type: 'doelstellingen' })
+      }
+      if (annotaties.length > 0) await supabase.from('annotaties').insert(annotaties)
+
       router.push(`/partituren/${p.id}`)
     } catch (e: any) { setFout(e.message); setLoading(false) }
   }
 
   const isGewijzigd = audioDuur > 0 && (trimStart > 0 || trimEnd < Math.floor(audioDuur))
+  const vandaag = new Date().toLocaleDateString('nl-BE', { day: 'numeric', month: 'numeric' })
 
+  // ── KEUZE ──────────────────────────────────────────────────────────────
+  if (stap === 'keuze') {
+    return (
+      <main className="page px-page flex flex-col">
+        <div className="flex justify-center pt-6 pb-8">
+          <Image src="/images/doremio-logo2.png" alt="Doremio" width={100} height={73} priority />
+        </div>
+        <button onClick={() => router.back()} className="mb-6 font-apercu font-bold text-body-lg" style={{ color: '#0766C6' }}>←</button>
+        <h1 className="font-apercu font-bold text-display-md mb-8" style={{ color: '#0766C6' }}>
+          Nieuw lesmateriaal toevoegen:
+        </h1>
+        <div className="flex flex-col gap-4">
+          <button onClick={() => bestandInput.current?.click()}
+            className="w-full py-5 rounded-full font-apercu font-bold text-white text-body-lg active:scale-95 transition-transform duration-100"
+            style={{ backgroundColor: '#0766C6' }}>
+            Bestanden Uploaden
+          </button>
+          <button onClick={() => cameraInput.current?.click()}
+            className="w-full py-5 rounded-full font-apercu font-bold text-white text-body-lg active:scale-95 transition-transform duration-100"
+            style={{ backgroundColor: '#FF560D' }}>
+            Lesmaterial inscannen
+          </button>
+          <input ref={bestandInput} type="file" accept=".pdf,image/*" onChange={handleBestandKeuze} className="hidden" />
+          <input ref={cameraInput} type="file" accept="image/*" capture="environment" onChange={handleBestandKeuze} className="hidden" />
+        </div>
+        <p className="font-apercu text-body-sm text-center mt-6" style={{ color: '#8FA3B8' }}>
+          Ik heb hulp nodig met lesmateriaal toe te voegen
+        </p>
+        <BottomNav />
+      </main>
+    )
+  }
+
+  // ── DONKERE WIZARD ─────────────────────────────────────────────────────
   return (
-    <main className="min-h-screen px-6 py-10 pb-16" style={{ backgroundColor: '#F3E7DD' }}>
-      <div className="max-w-lg mx-auto">
+    <main style={DONKER} className="px-5">
 
-        {/* Terugknop */}
-        <button
-          onClick={isWizardStap ? vorige : () => router.back()}
-          className="mb-6 text-sm flex items-center gap-2"
-          style={{ color: '#0766C6' }}>
-          ← {isWizardStap && wizardIndex === 0 ? 'Terug' : isWizardStap ? 'Vorige stap' : 'Terug'}
-        </button>
+      {/* ── VERWERKEN ── */}
+      {stap === 'verwerken' && (
+        <div className="flex flex-col items-center justify-center gap-6" style={{ minHeight: '80vh' }}>
+          <div className="flex gap-1.5">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="w-3 h-3 rounded-full" style={{ backgroundColor: '#FF560D', animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />
+            ))}
+          </div>
+          <p className="font-apercu font-bold text-white text-body-lg">Lesmateriaal wordt verwerkt…</p>
+          <p className="font-apercu text-body-sm" style={{ color: '#8FA3B8' }}>AI herkent titel en componist</p>
+        </div>
+      )}
 
-        <h1 className="text-3xl font-bold mb-2" style={{ color: '#0766C6' }}>Nieuwe partituur</h1>
+      {/* ── FORMULIER (Screen 1) ── */}
+      {stap === 'formulier' && (
+        <div className="flex flex-col gap-5 pt-4">
+          {/* Terug + Heading */}
+          <button onClick={vorige} className="font-apercu font-bold text-white text-body-lg">←</button>
+          <h1 className="font-apercu font-bold text-display-md text-white -mt-2">
+            Nieuw lesmateriaal toevoegen
+          </h1>
 
-        {/* Wizard voortgangsbalk */}
-        {isWizardStap && (
-          <div className="mb-8 mt-5">
-            <div className="flex items-center gap-1">
-              {WIZARD_STAPPEN.map((s, i) => (
-                <div key={s} className="flex items-center gap-1 flex-1">
-                  <div className="flex flex-col items-center gap-1 flex-1">
-                    <div
-                      className="w-full h-1 rounded-full transition-all"
-                      style={{
-                        backgroundColor: i <= wizardIndex ? '#0766C6' : '#D4C5BB',
-                      }}
-                    />
-                    <span
-                      className="text-xs whitespace-nowrap"
-                      style={{
-                        color: i === wizardIndex ? '#0766C6' : i < wizardIndex ? '#888' : '#C0B0A8',
-                        fontWeight: i === wizardIndex ? 700 : 400,
-                        fontSize: '9px',
-                      }}>
-                      {WIZARD_LABELS[s]}
-                    </span>
-                  </div>
+          {/* PDF preview + velden */}
+          <div className="flex gap-4 items-start">
+            {/* PDF preview */}
+            <div className="flex-shrink-0 flex items-center justify-center rounded-2xl"
+              style={{ width: 100, height: 120, backgroundColor: '#fff' }}>
+              {isPdf ? (
+                <div className="flex flex-col items-center gap-1">
+                  <svg width="28" height="36" viewBox="0 0 28 36" fill="none">
+                    <rect x="1" y="1" width="26" height="34" rx="4" stroke="#E5E5E5" strokeWidth="1.5" fill="#FAFAFA" />
+                    <path d="M7 1v9h-6" stroke="#E5E5E5" strokeWidth="1.5" fill="none" />
+                    <path d="M5 18h18M5 23h14M5 28h18" stroke="#E5E5E5" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                  <span className="font-apercu font-bold text-body-sm" style={{ color: '#FF560D' }}>PDF</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Stap: keuze */}
-        {stap === 'keuze' && (
-          <div className="flex flex-col gap-4 mt-6">
-            <p className="text-sm mb-2" style={{ color: '#666' }}>Upload een PDF of maak een foto van je partituur</p>
-            <button onClick={() => bestandInput.current?.click()}
-              className="w-full py-6 px-6 rounded-2xl text-left transition-transform hover:scale-105" style={{ backgroundColor: '#0766C6' }}>
-              <p className="text-white font-bold text-lg">📄 PDF uploaden</p>
-              <p className="text-blue-200 text-sm">Upload een bestaand PDF bestand</p>
-            </button>
-            <button onClick={() => cameraInput.current?.click()}
-              className="w-full py-6 px-6 rounded-2xl text-left transition-transform hover:scale-105" style={{ backgroundColor: '#FF560D' }}>
-              <p className="text-white font-bold text-lg">📷 Foto nemen</p>
-              <p className="text-orange-200 text-sm">Scan een papieren partituur met je camera</p>
-            </button>
-            <input ref={bestandInput} type="file" accept=".pdf,image/*" onChange={handleBestandKeuze} className="hidden" />
-            <input ref={cameraInput} type="file" accept="image/*" capture="environment" onChange={handleBestandKeuze} className="hidden" />
-          </div>
-        )}
-
-        {/* Stap: verwerken */}
-        {stap === 'verwerken' && (
-          <div className="flex flex-col items-center py-16 gap-4">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center animate-pulse" style={{ backgroundColor: '#0766C6' }}>
-              <span className="text-white text-3xl">♪</span>
-            </div>
-            <p className="font-semibold" style={{ color: '#0766C6' }}>Partituur wordt herkend...</p>
-            <p className="text-sm text-center" style={{ color: '#888' }}>We zoeken de titel, componist en referentie-audio op</p>
-          </div>
-        )}
-
-        {/* Stap 1: Gegevens bevestigen */}
-        {stap === 'gegevens' && (
-          <div className="flex flex-col gap-4">
-            <p className="text-sm" style={{ color: '#666' }}>Controleer de herkende gegevens en pas ze aan indien nodig.</p>
-
-            {/* Document preview */}
-            {isPdf ? (
-              <div className="rounded-2xl p-5 flex items-center gap-4" style={{ backgroundColor: '#fff' }}>
-                <span className="text-4xl">📄</span>
-                <div>
-                  <p className="font-semibold" style={{ color: '#333' }}>{bestand?.name}</p>
-                  <p className="text-sm" style={{ color: '#888' }}>PDF partituur</p>
-                </div>
-              </div>
-            ) : bestand && (
-              <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#fff' }}>
-                <img src={URL.createObjectURL(bestand)} alt="Voorvertoning" className="w-full object-contain max-h-52" />
-              </div>
-            )}
-
-            <input type="text" placeholder="Titel van het stuk" value={titel} onChange={(e) => setTitel(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl text-base" style={{ backgroundColor: '#fff' }} />
-            <input type="text" placeholder="Componist" value={componist} onChange={(e) => setComponist(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl text-base" style={{ backgroundColor: '#fff' }} />
-
-            {/* YouTube referenties — compact badge */}
-            {referenties.length > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl"
-                style={{ backgroundColor: '#fff' }}>
-                <span className="text-base">▶</span>
-                <p className="text-sm flex-1" style={{ color: '#555' }}>
-                  <span className="font-semibold" style={{ color: '#0766C6' }}>{referenties.length} YouTube</span>
-                  {' '}referenties gevonden — je beheert ze in de Content stap
-                </p>
-              </div>
-            )}
-
-            <button
-              onClick={volgende}
-              disabled={!titel}
-              className="w-full py-4 rounded-2xl text-white font-semibold text-base mt-2"
-              style={{ backgroundColor: !titel ? '#bbb' : '#0766C6' }}>
-              Volgende →
-            </button>
-          </div>
-        )}
-
-        {/* Stap 2: Klas toewijzen */}
-        {stap === 'klas' && (
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="font-semibold text-lg mb-1" style={{ color: '#333' }}>{titel}</p>
-              {componist && <p className="text-sm" style={{ color: '#888' }}>{componist}</p>}
-            </div>
-
-            <p className="text-sm mt-1" style={{ color: '#666' }}>
-              Aan wie wil je deze partituur toewijzen?
-            </p>
-
-            <div className="flex flex-col gap-2 mt-1">
-              <button
-                onClick={() => setGeselecteerdeKlas('')}
-                className="w-full text-left px-5 py-4 rounded-2xl transition-all"
-                style={{
-                  backgroundColor: geselecteerdeKlas === '' ? '#0766C6' : '#fff',
-                  color: geselecteerdeKlas === '' ? '#fff' : '#333',
-                  border: geselecteerdeKlas === '' ? 'none' : '2px solid transparent',
-                }}>
-                <p className="font-semibold">Alle studenten</p>
-                <p className="text-xs mt-0.5" style={{ color: geselecteerdeKlas === '' ? '#93c5fd' : '#888' }}>
-                  Zichtbaar voor iedereen, geen klas vereist
-                </p>
-              </button>
-
-              {klassen.length === 0 && (
-                <div className="px-5 py-4 rounded-2xl" style={{ backgroundColor: '#fff' }}>
-                  <p className="text-sm" style={{ color: '#bbb' }}>Je hebt nog geen klassen aangemaakt.</p>
-                </div>
+              ) : bestand ? (
+                <img src={URL.createObjectURL(bestand)} alt="Preview" className="w-full h-full object-cover rounded-2xl" />
+              ) : (
+                <span className="font-apercu text-body-sm" style={{ color: '#ccc' }}>?</span>
               )}
-
-              {klassen.map(klas => (
-                <button
-                  key={klas.id}
-                  onClick={() => setGeselecteerdeKlas(klas.id)}
-                  className="w-full text-left px-5 py-4 rounded-2xl transition-all"
-                  style={{
-                    backgroundColor: geselecteerdeKlas === klas.id ? '#0766C6' : '#fff',
-                    color: geselecteerdeKlas === klas.id ? '#fff' : '#333',
-                  }}>
-                  <p className="font-semibold">👥 {klas.naam}</p>
-                  <p className="text-xs mt-0.5" style={{ color: geselecteerdeKlas === klas.id ? '#93c5fd' : '#888' }}>
-                    Enkel zichtbaar voor studenten in deze klas
-                  </p>
-                </button>
-              ))}
             </div>
 
-            <button onClick={volgende} className="w-full py-4 rounded-2xl text-white font-semibold text-base mt-2"
-              style={{ backgroundColor: '#0766C6' }}>
-              Volgende →
-            </button>
-          </div>
-        )}
-
-        {/* Stap 3: Referentie-opname */}
-        {stap === 'leraar_track' && (
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="font-semibold text-lg mb-0.5" style={{ color: '#333' }}>{titel}</p>
-              <p className="text-sm" style={{ color: '#666' }}>
-                Neem optioneel een referentie-opname op voor de student — audio of video.
-              </p>
-            </div>
-
-            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#fff' }}>
-              {/* Camera toggle */}
-              <div className="px-5 pt-5 pb-4 flex items-center justify-between" style={{ borderBottom: '1px solid #F3E7DD' }}>
-                <div>
-                  <p className="font-semibold text-sm" style={{ color: '#333' }}>
-                    {cameraActief ? '📹 Video + audio' : '🎙 Audio'}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: '#888' }}>
-                    {cameraActief ? 'Camera is aan — student ziet jou spelen' : 'Enkel audio — student hoort jou spelen'}
-                  </p>
-                </div>
-                <button onClick={toggleCamera}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all"
-                  style={{ backgroundColor: cameraActief ? '#0766C6' : '#F3E7DD', color: cameraActief ? '#fff' : '#666' }}>
-                  📷 {cameraActief ? 'Camera uit' : 'Camera aan'}
-                </button>
+            {/* Naam + Componist */}
+            <div className="flex-1 flex flex-col gap-3 min-w-0">
+              <div>
+                <label style={LABEL_STIJL}>Naam</label>
+                <input
+                  style={INPUT_STIJL}
+                  placeholder="Titel van het stuk"
+                  value={titel}
+                  onChange={e => setTitel(e.target.value)}
+                />
               </div>
-
-              {cameraActief && (
-                <div className="px-5 pt-4">
-                  <video ref={cameraVideoRef} autoPlay muted playsInline
-                    className="w-full rounded-xl object-cover"
-                    style={{ maxHeight: '200px', backgroundColor: '#000' }} />
-                </div>
-              )}
-
-              <div className="p-5">
-                {!mediaBlob && !opnameActief && (
-                  <div className="flex gap-3">
-                    <button onClick={startOpname}
-                      className="flex-1 py-3 rounded-xl font-semibold text-sm text-white transition-transform hover:scale-[1.02]"
-                      style={{ backgroundColor: '#FF560D' }}>
-                      ● Start opname
-                    </button>
-                    <button onClick={() => audioBestandInput.current?.click()}
-                      className="flex-1 py-3 rounded-xl font-medium text-sm transition-transform hover:scale-[1.02]"
-                      style={{ backgroundColor: '#F3E7DD', color: '#0766C6' }}>
-                      📁 Upload bestand
-                    </button>
-                  </div>
-                )}
-                <input ref={audioBestandInput} type="file" accept="audio/*" onChange={handleAudioBestand} className="hidden" />
-
-                {opnameActief && (
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center justify-center gap-3 py-4 rounded-xl" style={{ backgroundColor: '#F3E7DD' }}>
-                      <div className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: gepauzeerd ? '#bbb' : '#FF560D', animation: gepauzeerd ? 'none' : 'pulse 1s infinite' }} />
-                      <span className="text-3xl font-mono font-bold" style={{ color: gepauzeerd ? '#888' : '#333' }}>
-                        {formatTijd(opnameTijd)}
-                      </span>
-                      <span className="text-xs font-medium" style={{ color: gepauzeerd ? '#aaa' : '#FF560D' }}>
-                        {gepauzeerd ? 'gepauzeerd' : cameraActief ? '📹 video + audio' : 'opname bezig'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {!gepauzeerd ? (
-                        <button onClick={pauzeerOpname}
-                          className="py-3 rounded-xl font-medium text-sm flex flex-col items-center gap-1"
-                          style={{ backgroundColor: '#F3E7DD', color: '#333' }}>
-                          <span className="text-lg">⏸</span><span>Pauze</span>
-                        </button>
-                      ) : (
-                        <button onClick={hervatOpname}
-                          className="py-3 rounded-xl font-medium text-sm flex flex-col items-center gap-1"
-                          style={{ backgroundColor: '#F3E7DD', color: '#0766C6' }}>
-                          <span className="text-lg">▶</span><span>Hervat</span>
-                        </button>
-                      )}
-                      <button onClick={stopOpname}
-                        className="py-3 rounded-xl text-white font-medium text-sm flex flex-col items-center gap-1"
-                        style={{ backgroundColor: '#333' }}>
-                        <span className="text-lg">■</span><span>Stop</span>
-                      </button>
-                      <button onClick={annuleerOpname}
-                        className="py-3 rounded-xl font-medium text-sm flex flex-col items-center gap-1"
-                        style={{ backgroundColor: '#F3E7DD', color: '#FF560D' }}>
-                        <span className="text-lg">✕</span><span>Annuleer</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {mediaBlob && mediaUrl && !opnameActief && (
-                  <div className="flex flex-col gap-4">
-                    <div>
-                      <p className="text-xs font-semibold mb-2" style={{ color: '#0766C6' }}>
-                        ✓ {isVideo ? '📹 Video + audio' : 'Opname'} klaar
-                      </p>
-                      {isVideo ? (
-                        <video controls src={mediaUrl} className="w-full rounded-xl"
-                          style={{ maxHeight: '220px', backgroundColor: '#000' }} />
-                      ) : (
-                        <audio ref={audioRef} controls src={mediaUrl} className="w-full" onLoadedMetadata={handleAudioGeladen} />
-                      )}
-                    </div>
-
-                    {/* Trim — alleen voor audio */}
-                    {!isVideo && audioDuur > 0 && (
-                      <div className="rounded-xl p-4" style={{ backgroundColor: '#F3E7DD' }}>
-                        <p className="text-xs font-semibold mb-4" style={{ color: '#333' }}>✂️ Begin en einde bijknippen</p>
-
-                        <div className="mb-4">
-                          <div className="flex justify-between mb-1">
-                            <label className="text-xs font-medium" style={{ color: '#555' }}>Begin</label>
-                            <span className="text-xs font-mono font-bold" style={{ color: '#0766C6' }}>{formatTijd(trimStart)}</span>
-                          </div>
-                          <input type="range" min={0} max={Math.max(0, Math.floor(audioDuur) - 1)} step={1}
-                            value={trimStart} onChange={(e) => { const v = Number(e.target.value); if (v < trimEnd) setTrimStart(v) }}
-                            className="w-full" style={{ accentColor: '#0766C6' }} />
-                        </div>
-
-                        <div className="mb-4">
-                          <div className="flex justify-between mb-1">
-                            <label className="text-xs font-medium" style={{ color: '#555' }}>Einde</label>
-                            <span className="text-xs font-mono font-bold" style={{ color: '#0766C6' }}>{formatTijd(trimEnd)}</span>
-                          </div>
-                          <input type="range" min={1} max={Math.floor(audioDuur)} step={1}
-                            value={trimEnd} onChange={(e) => { const v = Number(e.target.value); if (v > trimStart) setTrimEnd(v) }}
-                            className="w-full" style={{ accentColor: '#0766C6' }} />
-                        </div>
-
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-xs" style={{ color: '#888' }}>
-                            Selectie: <span className="font-mono font-semibold" style={{ color: '#333' }}>{formatTijd(trimEnd - trimStart)}</span>
-                            {' '}van {formatTijd(Math.floor(audioDuur))}
-                          </span>
-                        </div>
-
-                        <button onClick={pasTrimToe} disabled={trimBezig || !isGewijzigd}
-                          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white"
-                          style={{ backgroundColor: trimBezig ? '#999' : !isGewijzigd ? '#ccc' : '#0766C6' }}>
-                          {trimBezig ? '⏳ Knippen...' : '✂️ Trim toepassen'}
-                        </button>
-                      </div>
-                    )}
-
-                    <button onClick={opnieuwOpnemen} className="text-xs text-center py-1" style={{ color: '#FF560D' }}>
-                      ↺ Opnieuw opnemen
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <button
-              onClick={volgende}
-              disabled={opnameActief}
-              className="w-full py-4 rounded-2xl font-semibold text-base mt-2"
-              style={{
-                backgroundColor: opnameActief ? '#bbb' : mediaBlob ? '#0766C6' : '#fff',
-                color: opnameActief ? '#fff' : mediaBlob ? '#fff' : '#0766C6',
-                border: mediaBlob ? 'none' : '2px solid #0766C6',
-              }}>
-              {mediaBlob ? 'Volgende →' : 'Overslaan →'}
-            </button>
-          </div>
-        )}
-
-        {/* Stap 4: Content (referenties + instructies) */}
-        {stap === 'instructies' && (
-          <div className="flex flex-col gap-4">
-            <div>
-              <p className="font-semibold text-lg mb-0.5" style={{ color: '#333' }}>{titel}</p>
-              <p className="text-sm" style={{ color: '#666' }}>
-                Kies welke YouTube referenties je meestuurt en voeg instructies toe.
-              </p>
-            </div>
-
-            {/* YouTube referenties beheren */}
-            {referenties.length > 0 ? (
-              <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#fff' }}>
-                <div className="px-5 pt-5 pb-3 flex items-center justify-between"
-                  style={{ borderBottom: '1px solid #F3E7DD' }}>
-                  <div>
-                    <p className="text-sm font-semibold" style={{ color: '#333' }}>
-                      ▶ YouTube referenties
-                    </p>
-                    <p className="text-xs mt-0.5" style={{ color: '#888' }}>
-                      {referenties.length} gevonden — verwijder wat je niet wil meesturen
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  {referenties.map((ref: any, i: number) => (
-                    <div key={i} className="px-5 py-4" style={{ borderBottom: '1px solid #F3E7DD' }}>
-                      {/* Ref header */}
-                      <div className="flex items-center gap-3">
-                        {ref.thumbnail && (
-                          <img src={ref.thumbnail} alt={ref.titel}
-                            className="w-16 h-11 rounded-lg object-cover flex-shrink-0" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold truncate" style={{ color: '#333' }}>
-                            {ref.titel}
-                          </p>
-                          <p className="text-xs mt-0.5" style={{ color: '#888' }}>
-                            {ref.kanaal}
-                            {ref.duur && <span> · {ref.duur}</span>}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setReferenties(prev => prev.filter((_, j) => j !== i))}
-                          className="w-8 h-8 rounded-xl flex items-center justify-center text-sm flex-shrink-0"
-                          style={{ backgroundColor: '#F3E7DD', color: '#bbb' }}
-                          title="Verwijder">
-                          ✕
-                        </button>
-                      </div>
-                      {/* Duiding input */}
-                      <input
-                        type="text"
-                        placeholder="Duiding toevoegen — bijv. 'Let op het tempo in de brug'..."
-                        value={ref.duiding || ''}
-                        onChange={(e) => setReferenties(prev =>
-                          prev.map((r, j) => j === i ? { ...r, duiding: e.target.value } : r)
-                        )}
-                        className="w-full mt-3 px-3 py-2 rounded-xl text-xs outline-none"
-                        style={{ backgroundColor: '#F3E7DD', color: '#333' }}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-2xl p-4 flex items-center gap-3"
-                style={{ backgroundColor: '#fff' }}>
-                <span style={{ color: '#bbb' }}>▶</span>
-                <p className="text-sm" style={{ color: '#bbb' }}>
-                  Geen YouTube referenties gevonden voor dit stuk.
-                </p>
-              </div>
-            )}
-
-            {/* Instructies textarea */}
-            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#fff' }}>
-              <div className="px-5 pt-5 pb-2">
-                <p className="text-xs font-semibold" style={{ color: '#888' }}>
-                  INSTRUCTIES VOOR DE STUDENT
-                </p>
-              </div>
-              <div className="px-5 pb-5">
-                <textarea
-                  placeholder="Bijv. Let op de dynamiek in maat 12-16. Oefen eerst de linkerhand apart, daarna samen..."
-                  value={annotatie}
-                  onChange={(e) => setAnnotatie(e.target.value)}
-                  rows={5}
-                  className="w-full px-4 py-3 rounded-xl text-base resize-none mt-2"
-                  style={{ backgroundColor: '#F3E7DD', border: 'none', outline: 'none' }}
+              <div>
+                <label style={LABEL_STIJL}>Componist</label>
+                <input
+                  style={INPUT_STIJL}
+                  placeholder="Componist"
+                  value={componist}
+                  onChange={e => setComponist(e.target.value)}
                 />
               </div>
             </div>
-
-            <button onClick={volgende} className="w-full py-4 rounded-2xl font-semibold text-base mt-2"
-              style={{
-                backgroundColor: (annotatie.trim() || referenties.length > 0) ? '#0766C6' : '#fff',
-                color: (annotatie.trim() || referenties.length > 0) ? '#fff' : '#0766C6',
-                border: (annotatie.trim() || referenties.length > 0) ? 'none' : '2px solid #0766C6',
-              }}>
-              Volgende →
-            </button>
           </div>
-        )}
 
-        {/* Stap 5: Samenvatting + opslaan */}
-        {stap === 'opslaan' && (
-          <div className="flex flex-col gap-4">
-            <p className="text-sm" style={{ color: '#666' }}>
-              Alles in orde? Sla de partituur op.
+          {/* Instructies */}
+          <div>
+            <p className="font-apercu font-bold text-white text-heading-sm mb-2">
+              Instructies &amp; aanwijzingen toevoegen?
             </p>
+            <textarea
+              style={{ ...INPUT_STIJL, resize: 'none' }}
+              rows={3}
+              placeholder="Let goed op bij het kiezen van je begintempo, begin langzaam..."
+              value={annotatie}
+              onChange={e => setAnnotatie(e.target.value)}
+            />
+          </div>
 
-            {/* Samenvatting */}
-            <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: '#fff' }}>
-              <div className="h-1 w-full" style={{ backgroundColor: '#0766C6' }} />
-              <div className="p-5 flex flex-col gap-3">
-
-                {/* Document */}
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{isPdf ? '📄' : '🖼️'}</span>
-                  <div>
-                    <p className="font-bold" style={{ color: '#0766C6' }}>{titel}</p>
-                    {componist && <p className="text-sm" style={{ color: '#555' }}>{componist}</p>}
+          {/* Doelstellingen */}
+          <div>
+            <p className="font-apercu font-bold text-white text-heading-sm mb-3">
+              Doelstellingen toevoegen?
+            </p>
+            <div className="flex flex-col gap-2">
+              {doelstellingen.map((d, i) => (
+                <div
+                  key={d.id}
+                  style={{ border: `1.5px solid ${i % 2 === 0 ? '#FF560D' : '#FFD100'}`, borderRadius: 12, padding: '12px 14px' }}
+                >
+                  <div className="flex items-start gap-3">
+                    <button
+                      onClick={() => toggleDoelstelling(d.id)}
+                      className="flex-shrink-0 w-5 h-5 rounded mt-0.5 flex items-center justify-center active:scale-90 transition-transform duration-100 flex-shrink-0"
+                      style={{
+                        border: d.aangevinkt ? 'none' : '1.5px solid rgba(255,255,255,0.35)',
+                        backgroundColor: d.aangevinkt ? '#FF560D' : 'transparent',
+                      }}
+                    >
+                      {d.aangevinkt && (
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <input
+                        style={{ ...INPUT_STIJL, border: 'none', backgroundColor: 'transparent', padding: '0', fontSize: 13, fontWeight: 700 }}
+                        placeholder="Naam doelstelling"
+                        value={d.naam}
+                        onChange={e => updateDoelstelling(d.id, 'naam', e.target.value)}
+                      />
+                      <input
+                        style={{ ...INPUT_STIJL, border: 'none', backgroundColor: 'transparent', padding: '2px 0 0 0', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}
+                        placeholder="Beschrijving (optioneel)"
+                        value={d.beschrijving}
+                        onChange={e => updateDoelstelling(d.id, 'beschrijving', e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <input
+                        style={{ ...INPUT_STIJL, border: 'none', backgroundColor: 'transparent', padding: '0', fontSize: 12, width: 60, textAlign: 'right', color: '#FF560D', fontWeight: 700 }}
+                        placeholder="5 min"
+                        value={d.duur}
+                        onChange={e => updateDoelstelling(d.id, 'duur', e.target.value)}
+                      />
+                      <button onClick={() => verwijderDoelstelling(d.id)} style={{ color: 'rgba(255,255,255,0.3)', fontSize: 14 }}>✕</button>
+                    </div>
                   </div>
                 </div>
+              ))}
+            </div>
 
-                <div className="h-px" style={{ backgroundColor: '#F3E7DD' }} />
+            {/* + knop */}
+            <div className="flex justify-center mt-4">
+              <button
+                onClick={voegDoelstellingToe}
+                className="w-12 h-12 rounded-full flex items-center justify-center active:scale-90 transition-transform duration-100"
+                style={{ backgroundColor: '#FF560D' }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
+                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
+            </div>
+          </div>
 
-                {/* Klas */}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm" style={{ color: '#888' }}>Toewijzing</span>
-                  <span className="text-sm font-semibold" style={{ color: '#333' }}>
-                    {geselecteerdeKlas
-                      ? `👥 ${klassen.find(k => k.id === geselecteerdeKlas)?.naam || 'Klas'}`
-                      : 'Alle studenten'}
-                  </span>
+          {/* Volgende knop */}
+          <div className="flex justify-end mt-2 mb-4">
+            <button
+              onClick={volgende}
+              disabled={!titel}
+              className="w-14 h-14 rounded-full flex items-center justify-center active:scale-90 transition-transform duration-100"
+              style={{ backgroundColor: titel ? '#FF560D' : '#555' }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── AUDIO (Screen 2) ── */}
+      {stap === 'audio' && (
+        <div className="flex flex-col gap-5 pt-4">
+          <button onClick={vorige} className="font-apercu font-bold text-white text-body-lg">←</button>
+          <h1 className="font-apercu font-bold text-display-md text-white -mt-2">
+            Referentie audio toevoegen?
+          </h1>
+
+          {/* Naam + Componist (readonly display) */}
+          <div className="flex flex-col gap-3">
+            <div>
+              <label style={LABEL_STIJL}>Naam</label>
+              <div style={{ ...INPUT_STIJL, color: 'rgba(255,255,255,0.8)' }}>{titel || '—'}</div>
+            </div>
+            <div>
+              <label style={LABEL_STIJL}>Componist</label>
+              <div style={{ ...INPUT_STIJL, color: 'rgba(255,255,255,0.8)' }}>{componist || '—'}</div>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className="flex justify-between gap-2">
+            {([
+              { id: 'metronoom', label: 'Metronoom', icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="5" y1="4" x2="5" y2="20" /><line x1="9" y1="6" x2="9" y2="20" />
+                  <line x1="13" y1="9" x2="13" y2="20" /><line x1="17" y1="4" x2="17" y2="20" />
+                </svg>
+              )},
+              { id: 'partituur', label: 'Partituur', icon: (
+                <svg width="22" height="16" viewBox="0 0 32 22" fill="none">
+                  <line x1="0" y1="3" x2="22" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="0" y1="8" x2="22" y2="8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="0" y1="13" x2="22" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="0" y1="18" x2="22" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <circle cx="27" cy="18" r="3" fill="currentColor" />
+                  <line x1="30" y1="18" x2="30" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                </svg>
+              )},
+              { id: 'track', label: 'Track', icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="8" r="4" /><path d="M6 20v-2a6 6 0 0 1 12 0v2" />
+                  <circle cx="12" cy="8" r="8" strokeOpacity="0.3" />
+                </svg>
+              )},
+              { id: 'aanwijzingen', label: 'Aanwijzingen', icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+              )},
+            ] as { id: AudioTab; label: string; icon: React.ReactNode }[]).map(tab => {
+              const actief = actieveAudioTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActieveAudioTab(tab.id)}
+                  className="flex-1 flex flex-col items-center gap-1.5 py-2 rounded-xl active:scale-95 transition-transform duration-100"
+                  style={{ backgroundColor: actief ? '#FF560D' : 'rgba(255,255,255,0.06)', color: actief ? '#fff' : '#8FA3B8' }}
+                >
+                  {tab.icon}
+                  <span className="font-apercu text-caption font-bold">{tab.label}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Tab content — Track */}
+          {actieveAudioTab === 'track' && (
+            <div className="flex flex-col gap-4">
+              {/* Timer */}
+              <p className="font-apercu font-bold text-white text-center" style={{ fontSize: 36, letterSpacing: 2 }}>
+                {formatTijdLang(opnameTijd)}
+              </p>
+
+              {/* Camera preview */}
+              {cameraActief && (
+                <div className="rounded-2xl overflow-hidden" style={{ aspectRatio: '16/9', backgroundColor: '#000' }}>
+                  <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
                 </div>
+              )}
 
-                {/* Opname */}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm" style={{ color: '#888' }}>Referentie-opname</span>
-                  <span className="text-sm font-semibold" style={{ color: '#333' }}>
-                    {mediaBlob ? (isVideo ? '📹 Video aanwezig' : '🎙 Audio aanwezig') : 'Geen'}
-                  </span>
+              {/* Golfvorm — alleen zichtbaar zonder camera */}
+              {!cameraActief && (
+                (opnameActief || mediaBlob) ? (
+                  <Golfvorm split={opnameActief ? 0.5 : (opnameTijd / Math.max(audioDuur, 1))} />
+                ) : (
+                  <div style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 40, padding: '20px 16px', textAlign: 'center' }}>
+                    <p className="font-apercu text-body-sm" style={{ color: '#8FA3B8' }}>
+                      Start de opname of upload een bestand
+                    </p>
+                  </div>
+                )
+              )}
+
+              {/* Controls */}
+              {!mediaBlob ? (
+                <div className="flex justify-center items-center gap-6 mt-2">
+                  {/* Camera toggle — alleen tonen als niet aan het opnemen */}
+                  {!opnameActief && (
+                    <button
+                      onClick={toggleCamera}
+                      className="w-12 h-12 rounded-full flex items-center justify-center active:scale-90 transition-transform duration-100"
+                      style={{ backgroundColor: cameraActief ? '#0766C6' : 'rgba(255,255,255,0.1)', border: `2px solid ${cameraActief ? '#0766C6' : 'rgba(255,255,255,0.25)'}` }}
+                    >
+                      {cameraActief ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M23 7 16 12l7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                        </svg>
+                      ) : (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M23 7 16 12l7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                          <line x1="1" y1="1" x2="23" y2="23" stroke="rgba(255,255,255,0.5)" strokeWidth="2"/>
+                        </svg>
+                      )}
+                    </button>
+                  )}
+
+                  {opnameActief ? (
+                    <>
+                      <button
+                        onClick={gepauzeerd ? hervatOpname : pauzeerOpname}
+                        className="w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition-transform duration-100"
+                        style={{ backgroundColor: '#FF560D', border: '3px solid #0766C6' }}
+                      >
+                        {gepauzeerd ? (
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                            <polygon points="5,3 19,12 5,21" />
+                          </svg>
+                        ) : (
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
+                            <line x1="6" y1="4" x2="6" y2="20" /><line x1="18" y1="4" x2="18" y2="20" />
+                          </svg>
+                        )}
+                      </button>
+                      <button
+                        onClick={stopOpname}
+                        className="w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition-transform duration-100"
+                        style={{ backgroundColor: '#FF560D', border: '3px solid #0766C6' }}
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                          <rect x="4" y="4" width="16" height="16" rx="2" />
+                        </svg>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={startOpname}
+                      className="w-16 h-16 rounded-full flex items-center justify-center active:scale-90 transition-transform duration-100"
+                      style={{ backgroundColor: '#FF560D', border: '3px solid #0766C6' }}
+                    >
+                      <div className="w-5 h-5 rounded-full" style={{ backgroundColor: 'white' }} />
+                    </button>
+                  )}
                 </div>
-
-                {/* Instructies */}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm" style={{ color: '#888' }}>Instructies</span>
-                  <span className="text-sm font-semibold" style={{ color: '#333' }}>
-                    {annotatie.trim() ? `${annotatie.length} tekens` : 'Geen'}
-                  </span>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <audio ref={audioRef} controls src={mediaUrl!} className="w-full" onLoadedMetadata={handleAudioGeladen}
+                    style={{ borderRadius: 12 }} />
+                  {/* Trim */}
+                  {audioDuur > 0 && (
+                    <div className="rounded-xl p-4 flex flex-col gap-3" style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <div className="flex items-center gap-2">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+                          <line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/>
+                          <line x1="8.12" y1="8.12" x2="12" y2="12"/>
+                        </svg>
+                        <p className="font-apercu font-bold text-white text-body-sm">Bijknippen (optioneel)</p>
+                      </div>
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="font-apercu text-caption" style={{ color: '#8FA3B8' }}>Begin</span>
+                          <span className="font-apercu text-caption font-bold text-white">{formatTijdLang(trimStart)}</span>
+                        </div>
+                        <input type="range" min={0} max={Math.max(0, Math.floor(audioDuur) - 1)} step={1}
+                          value={trimStart} onChange={e => { const v = Number(e.target.value); if (v < trimEnd) setTrimStart(v) }}
+                          className="w-full" style={{ accentColor: '#FF560D' }} />
+                      </div>
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <span className="font-apercu text-caption" style={{ color: '#8FA3B8' }}>Einde</span>
+                          <span className="font-apercu text-caption font-bold text-white">{formatTijdLang(trimEnd)}</span>
+                        </div>
+                        <input type="range" min={1} max={Math.floor(audioDuur)} step={1}
+                          value={trimEnd} onChange={e => { const v = Number(e.target.value); if (v > trimStart) setTrimEnd(v) }}
+                          className="w-full" style={{ accentColor: '#FF560D' }} />
+                      </div>
+                      <button onClick={pasTrimToe} disabled={trimBezig || !(audioDuur > 0 && (trimStart > 0 || trimEnd < Math.floor(audioDuur)))}
+                        className="w-full py-2.5 rounded-xl font-apercu font-bold text-white text-body-sm flex items-center justify-center gap-2"
+                        style={{ backgroundColor: trimBezig ? '#555' : '#FF560D' }}>
+                        {!trimBezig && (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+                            <line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/>
+                            <line x1="8.12" y1="8.12" x2="12" y2="12"/>
+                          </svg>
+                        )}
+                        {trimBezig ? 'Bezig...' : 'Trim toepassen'}
+                      </button>
+                    </div>
+                  )}
+                  <button onClick={opnieuwOpnemen} className="font-apercu text-body-sm text-center" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    ↺ Opnieuw opnemen
+                  </button>
                 </div>
+              )}
+            </div>
+          )}
 
-                {/* Referenties */}
-                <div className="flex items-center justify-between">
-                  <span className="text-sm" style={{ color: '#888' }}>YouTube referenties</span>
-                  <span className="text-sm font-semibold" style={{ color: '#333' }}>
-                    {referenties.length > 0 ? `${referenties.length} geselecteerd` : 'Geen'}
-                  </span>
+          {/* Tab content — Aanwijzingen */}
+          {actieveAudioTab === 'aanwijzingen' && (
+            <div>
+              <label style={LABEL_STIJL}>Instructies &amp; aanwijzingen</label>
+              <textarea
+                style={{ ...INPUT_STIJL, resize: 'none' }}
+                rows={5}
+                placeholder="Bijv. let op het tempo in maat 12-16..."
+                value={annotatie}
+                onChange={e => setAnnotatie(e.target.value)}
+              />
+            </div>
+          )}
+
+          {/* Tab content — Metronoom / Partituur placeholder */}
+          {(actieveAudioTab === 'metronoom' || actieveAudioTab === 'partituur') && (
+            <div className="flex flex-col items-center gap-3 py-8" style={{ color: '#8FA3B8' }}>
+              <p className="font-apercu text-body-sm text-center">
+                {actieveAudioTab === 'metronoom' ? 'Metronoom functie binnenkort beschikbaar' : 'Partituur bekijken binnenkort beschikbaar'}
+              </p>
+            </div>
+          )}
+
+          <input ref={audioBestandInput} type="file" accept="audio/*" onChange={handleAudioBestand} className="hidden" />
+
+          {/* Bottom knoppen */}
+          <div className="flex gap-3 mt-2 mb-4">
+            <button
+              onClick={() => audioBestandInput.current?.click()}
+              className="flex-1 py-4 rounded-full font-apercu font-bold text-white text-body-md active:scale-95 transition-transform duration-100"
+              style={{ backgroundColor: '#FF560D' }}
+            >
+              Externe referentie audio zoeken
+            </button>
+            <button
+              onClick={volgende}
+              className="w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90 transition-transform duration-100"
+              style={{ backgroundColor: '#FF560D' }}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── OVERZICHT (Screen 3) ── */}
+      {stap === 'overzicht' && (
+        <div className="flex flex-col gap-5 pt-4">
+          <button onClick={vorige} className="font-apercu font-bold text-white text-body-lg">←</button>
+          <h1 className="font-apercu font-bold text-display-md text-white -mt-2">
+            Overzicht &ldquo;{titel}&rdquo; {vandaag}
+          </h1>
+
+          {/* Naam gecombineerd */}
+          <div>
+            <label style={LABEL_STIJL}>Naam</label>
+            <input
+              style={INPUT_STIJL}
+              value={`${titel}${componist ? ` — ${componist}` : ''}`}
+              onChange={e => {
+                const parts = e.target.value.split(' — ')
+                setTitel(parts[0] || '')
+                setComponist(parts[1] || '')
+              }}
+            />
+          </div>
+
+          {/* Instructies */}
+          <div>
+            <label style={LABEL_STIJL}>Instructies &amp; aanwijzingen</label>
+            <div style={{ ...INPUT_STIJL, minHeight: 60, color: annotatie ? '#fff' : 'rgba(255,255,255,0.35)' }}>
+              {annotatie || 'Geen instructies toegevoegd'}
+            </div>
+          </div>
+
+          {/* Doelstellingen */}
+          {doelstellingen.length > 0 && (
+            <div>
+              <label style={LABEL_STIJL}>Doelstellingen</label>
+              <div className="flex flex-col gap-2">
+                {doelstellingen.map((d, i) => (
+                  <div key={d.id} style={{ border: `1.5px solid ${i % 2 === 0 ? '#FF560D' : '#FFD100'}`, borderRadius: 12, padding: '12px 14px' }}>
+                    <div className="flex items-start gap-3">
+                      <button
+                        onClick={() => toggleDoelstelling(d.id)}
+                        className="flex-shrink-0 w-5 h-5 rounded mt-0.5 flex items-center justify-center active:scale-90 transition-transform duration-100 flex-shrink-0"
+                        style={{
+                          border: d.aangevinkt ? 'none' : '1.5px solid rgba(255,255,255,0.35)',
+                          backgroundColor: d.aangevinkt ? '#FF560D' : 'transparent',
+                        }}
+                      >
+                        {d.aangevinkt && (
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="font-apercu font-bold text-white text-body-sm">{d.naam || '—'}</p>
+                          <p className="font-apercu text-body-sm flex-shrink-0 ml-2" style={{ color: '#FF560D' }}>{d.duur}</p>
+                        </div>
+                        {d.beschrijving && (
+                          <p className="font-apercu text-caption mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{d.beschrijving}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Audio player */}
+          {mediaBlob && mediaUrl && (
+            <div>
+              <label style={LABEL_STIJL}>Referentie audio</label>
+              <div className="flex items-center gap-3 mb-2">
+                <span className="font-apercu text-caption" style={{ color: '#8FA3B8' }}>00:00:00</span>
+                <span className="font-apercu text-caption ml-auto" style={{ color: '#8FA3B8' }}>{formatTijdLang(Math.floor(audioDuur))}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <audio ref={audioRef} src={mediaUrl} onLoadedMetadata={handleAudioGeladen} className="hidden" />
+                <button
+                  onClick={() => { if (audioRef.current) { audioRef.current.paused ? audioRef.current.play() : audioRef.current.pause() } }}
+                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ border: '2px solid rgba(255,255,255,0.3)', backgroundColor: 'transparent' }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                    <polygon points="5,3 19,12 5,21" />
+                  </svg>
+                </button>
+                <div className="flex-1">
+                  <Golfvorm split={0.1} hoogte={44} />
                 </div>
               </div>
             </div>
+          )}
 
-            {fout && <p className="text-sm px-1" style={{ color: '#FF560D' }}>{fout}</p>}
-
-            <button
-              onClick={uploaden}
-              disabled={loading || !titel}
-              className="w-full py-4 rounded-2xl text-white font-semibold text-lg mt-2"
-              style={{ backgroundColor: loading || !titel ? '#999' : '#0766C6' }}>
-              {loading ? 'Uploaden...' : 'Partituur opslaan'}
-            </button>
+          {/* Klas selectie */}
+          <div>
+            <label style={LABEL_STIJL}>Selecteer je klasgroep</label>
+            <select
+              value={geselecteerdeKlas}
+              onChange={e => setGeselecteerdeKlas(e.target.value)}
+              style={{ ...INPUT_STIJL, border: '1.5px solid #0766C6', appearance: 'none' }}
+            >
+              <option value="">Alle studenten (geen klas)</option>
+              {klassen.map(k => <option key={k.id} value={k.id}>{k.naam}</option>)}
+            </select>
           </div>
-        )}
 
-      </div>
+          {fout && <p className="font-apercu text-body-sm" style={{ color: '#FF560D' }}>{fout}</p>}
+
+          {/* Opslaan */}
+          <button
+            onClick={uploaden}
+            disabled={loading || !titel}
+            className="flex items-center justify-between w-full py-4 px-6 rounded-full font-apercu font-bold text-white text-body-lg active:scale-95 transition-transform duration-100 mb-4"
+            style={{ backgroundColor: loading || !titel ? '#555' : '#FF560D' }}
+          >
+            <span>{loading ? 'Uploaden...' : 'Oefensessie delen'}</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      <BottomNav />
     </main>
   )
 }

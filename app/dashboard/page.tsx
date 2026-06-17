@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import BottomNav from '@/components/BottomNav'
 
 type Sessie = {
@@ -13,38 +14,22 @@ type Sessie = {
   partituren: { titel: string; componist: string | null } | null
 }
 
-function berekenStreak(sessies: Sessie[]): number {
-  if (sessies.length === 0) return 0
-  const dagen = [...new Set(sessies.map(s => s.created_at.slice(0, 10)))].sort().reverse()
-  const vandaag = new Date().toISOString().slice(0, 10)
-  const gisteren = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
-  if (dagen[0] !== vandaag && dagen[0] !== gisteren) return 0
-  let streak = 1
-  for (let i = 1; i < dagen.length; i++) {
-    const prev = new Date(dagen[i - 1])
-    const curr = new Date(dagen[i])
-    const diff = Math.round((prev.getTime() - curr.getTime()) / 86400000)
-    if (diff === 1) streak++
-    else break
-  }
-  return streak
+type Partituur = {
+  id: string
+  titel: string
+  componist: string | null
+  leraar_id: string
+  created_at: string
 }
 
-function formatDuur(seconden: number): string {
-  const m = Math.floor(seconden / 60)
-  const s = seconden % 60
-  if (m === 0) return `${s}s`
-  return `${m}min`
-}
+const DAGLETTERS = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za']
 
 export default function Dashboard() {
-  const [gebruiker, setGebruiker] = useState<any>(null)
   const [profiel, setProfiel] = useState<any>(null)
-  const [aantalPartituren, setAantalPartituren] = useState(0)
-  const [aantalSessies, setAantalSessies] = useState(0)
-  const [recentePartituren, setRecentePartituren] = useState<any[]>([])
+  const [recentePartituren, setRecentePartituren] = useState<Partituur[]>([])
   const [recenteSessies, setRecenteSessies] = useState<Sessie[]>([])
   const [uploaders, setUploaders] = useState<Record<string, string>>({})
+  const [aantalSessies, setAantalSessies] = useState(0)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
@@ -52,73 +37,42 @@ export default function Dashboard() {
     const haalOp = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/auth/login'); return }
-      setGebruiker(user)
 
       const { data: profielData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single()
+        .from('profiles').select('*').eq('id', user.id).single()
       setProfiel(profielData)
 
       const rol = profielData?.role
-      let partituren: any[] = []
 
       if (rol === 'leraar') {
-        const { data } = await supabase
+        const { data: partiturenData } = await supabase
           .from('partituren')
           .select('*')
           .eq('leraar_id', user.id)
           .order('created_at', { ascending: false })
-          .limit(3)
-        partituren = data || []
-
-        const { count } = await supabase
-          .from('partituren')
-          .select('*', { count: 'exact', head: true })
-          .eq('leraar_id', user.id)
-        setAantalPartituren(count || 0)
-
+          .limit(4)
+        setRecentePartituren(partiturenData || [])
       } else {
-        const { data } = await supabase
-          .from('partituren')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(3)
-        partituren = data || []
-
-        const { count: countP } = await supabase
-          .from('partituren')
-          .select('*', { count: 'exact', head: true })
-        setAantalPartituren(countP || 0)
-
-        const { count: countS } = await supabase
-          .from('oefensessies')
-          .select('*', { count: 'exact', head: true })
-          .eq('student_id', user.id)
-        setAantalSessies(countS || 0)
-
-        // Recente sessies voor logboek preview
-        const { data: sessiesData } = await supabase
-          .from('oefensessies')
-          .select('id, duur, created_at, partituur_id, partituren(titel, componist)')
-          .eq('student_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(50)
+        const [{ data: partiturenData }, { data: sessiesData }, { count }] = await Promise.all([
+          supabase.from('partituren').select('*').order('created_at', { ascending: false }).limit(4),
+          supabase.from('oefensessies')
+            .select('id, duur, created_at, partituur_id, partituren(titel, componist)')
+            .eq('student_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(50),
+          supabase.from('oefensessies').select('*', { count: 'exact', head: true }).eq('student_id', user.id),
+        ])
+        setRecentePartituren(partiturenData || [])
         setRecenteSessies((sessiesData as any) || [])
-      }
+        setAantalSessies(count || 0)
 
-      setRecentePartituren(partituren)
-
-      const leraarIds = [...new Set(partituren.map((p: any) => p.leraar_id).filter(Boolean))]
-      if (leraarIds.length > 0) {
-        const { data: profielen } = await supabase
-          .from('profiles')
-          .select('id, naam')
-          .in('id', leraarIds)
-        const uploaderMap: Record<string, string> = {}
-        profielen?.forEach((p: any) => { uploaderMap[p.id] = p.naam })
-        setUploaders(uploaderMap)
+        const leraarIds = [...new Set((partiturenData || []).map((p: any) => p.leraar_id).filter(Boolean))]
+        if (leraarIds.length > 0) {
+          const { data: profielen } = await supabase.from('profiles').select('id, naam').in('id', leraarIds)
+          const map: Record<string, string> = {}
+          profielen?.forEach((p: any) => { map[p.id] = p.naam })
+          setUploaders(map)
+        }
       }
 
       setLoading(false)
@@ -126,350 +80,442 @@ export default function Dashboard() {
     haalOp()
   }, [router])
 
-  const uitloggen = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
-  }
-
   if (loading) return (
-    <main className="min-h-screen flex items-center justify-center"
-      style={{ backgroundColor: '#F3E7DD' }}>
-      <p style={{ color: '#0766C6' }}>Laden...</p>
+    <main className="min-h-dvh flex items-center justify-center bg-warm-white">
+      <p className="font-apercu text-body-md" style={{ color: '#0766C6' }}>Laden…</p>
     </main>
   )
 
+  const voornaam = profiel?.naam?.split(' ')[0] || 'jou'
   const rol = profiel?.role
-  const naam = profiel?.naam || gebruiker?.email
-  const streak = berekenStreak(recenteSessies)
-
-  // Weekkalender: laatste 7 dagen
-  const weekDagen = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - (6 - i))
-    return d.toISOString().slice(0, 10)
-  })
-  const geoefendeDagen = new Set(recenteSessies.map(s => s.created_at.slice(0, 10)))
   const vandaag = new Date().toISOString().slice(0, 10)
-  const vandaagGeoefend = geoefendeDagen.has(vandaag)
+  const geoefendeDagen = new Set(recenteSessies.map(s => s.created_at.slice(0, 10)))
 
-  return (
-    <main className="min-h-screen px-6 py-10 pb-28" style={{ backgroundColor: '#F3E7DD' }}>
-      <div className="max-w-2xl mx-auto">
+  const kalenderDagen = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - 2 + i)
+    const iso = d.toISOString().slice(0, 10)
+    return {
+      iso,
+      letter: DAGLETTERS[d.getDay()],
+      nr: d.getDate(),
+      isVandaag: iso === vandaag,
+      geoefend: geoefendeDagen.has(iso),
+    }
+  })
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.push('/profiel')}
-              className="w-12 h-12 rounded-2xl flex items-center justify-center transition-transform hover:scale-[1.05]"
-              style={{ backgroundColor: '#0766C6' }}>
-              <span className="text-white text-2xl">♪</span>
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold" style={{ color: '#0766C6' }}>
-                Doremio
-              </h1>
-              <p className="text-sm" style={{ color: '#666' }}>
-                {naam} · {rol === 'leraar' ? 'Leraar' : 'Student'}
-              </p>
-            </div>
-          </div>
-          <button onClick={uitloggen}
-            className="px-4 py-2 rounded-xl text-sm font-medium"
-            style={{ backgroundColor: '#fff', color: '#666' }}>
-            Uitloggen
+  // ===== LERAAR VIEW =====
+  if (rol === 'leraar') {
+    return (
+      <main className="page px-page">
+
+        {/* Logo */}
+        <div className="flex justify-center pt-6 pb-5">
+          <Image src="/images/doremio-logo2.png" alt="Doremio" width={120} height={87} priority />
+        </div>
+
+        {/* Begroeting */}
+        <div className="mb-6 text-right">
+          <p className="font-apercu font-bold text-heading-xl" style={{ color: '#0766C6' }}>
+            Welkom terug,
+          </p>
+          <p className="font-kiro text-display-xl" style={{ color: '#FF560D' }}>
+            {voornaam}
+          </p>
+        </div>
+
+        {/* CTA knoppen */}
+        <div className="flex flex-col gap-3 mb-6">
+          <button
+            onClick={() => router.push('/partituren/nieuw')}
+            className="w-full rounded-full py-4 px-6 font-apercu font-bold text-white text-body-lg active:scale-95 transition-transform duration-100"
+            style={{ backgroundColor: '#0766C6' }}
+          >
+            Nieuw lesmateriaal toevoegen
+          </button>
+          <button
+            onClick={() => router.push('/venster')}
+            className="w-full rounded-full py-4 px-6 font-apercu font-bold text-white text-body-lg active:scale-95 transition-transform duration-100"
+            style={{ backgroundColor: '#FF560D' }}
+          >
+            Classview openen
           </button>
         </div>
 
-        {/* Statistieken */}
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <button
-            onClick={() => router.push('/partituren')}
-            className="rounded-2xl p-6 text-left transition-transform hover:scale-[1.02]"
-            style={{ backgroundColor: '#0766C6' }}>
-            <p className="text-blue-200 text-sm mb-1">Partituren</p>
-            <p className="text-white text-3xl font-bold">{aantalPartituren}</p>
-            <p className="text-blue-200 text-xs mt-2">Bekijk alle →</p>
-          </button>
+        {/* Lesmateriaal — eigen + collega's in één rij */}
+        <section className="mb-6">
+          <h2 className="section-title mb-3">Lesmateriaal</h2>
+          <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-5 px-5">
 
-          <button
-            onClick={() => rol !== 'leraar' ? router.push('/sessies') : undefined}
-            className="rounded-2xl p-6 text-left transition-transform hover:scale-[1.02]"
-            style={{ backgroundColor: '#FF560D' }}>
-            <p className="text-orange-200 text-sm mb-1">Oefensessies</p>
-            <p className="text-white text-3xl font-bold">{aantalSessies}</p>
-            <p className="text-orange-200 text-xs mt-2">
-              {rol === 'leraar' ? 'Van studenten' : 'Logboek bekijken →'}
-            </p>
-          </button>
-        </div>
-
-        {/* Start oefenen widget — alleen voor student */}
-        {rol !== 'leraar' && (() => {
-          const laatstePart = recenteSessies.find(s => s.partituur_id && s.partituren)
-          return (
-            <div className="rounded-2xl overflow-hidden mb-4 shadow-sm"
-              style={{ backgroundColor: '#FF560D' }}>
-              <div className="p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide mb-1"
-                  style={{ color: 'rgba(255,255,255,0.65)' }}>
-                  {vandaagGeoefend
-                    ? '✓ Vandaag al geoefend'
-                    : streak > 0 ? `🔥 ${streak} dagen op rij — ga door!` : 'Klaar om te oefenen?'}
-                </p>
-                {laatstePart ? (
-                  <>
-                    <p className="text-white font-bold text-xl leading-tight mb-0.5">
-                      {laatstePart.partituren!.titel}
-                    </p>
-                    {laatstePart.partituren!.componist && (
-                      <p className="text-sm mb-4" style={{ color: 'rgba(255,255,255,0.7)' }}>
-                        {laatstePart.partituren!.componist}
-                      </p>
-                    )}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => router.push(`/studio/${laatstePart.partituur_id}`)}
-                        className="flex-1 py-3 rounded-xl font-bold text-sm"
-                        style={{ backgroundColor: '#fff', color: '#FF560D' }}>
-                        ▶ Ga verder
-                      </button>
-                      <button
-                        onClick={() => router.push('/partituren')}
-                        className="px-4 py-3 rounded-xl font-medium text-sm"
-                        style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff' }}>
-                        Ander stuk
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-white font-bold text-xl mb-3">Start je eerste sessie</p>
-                    <button
-                      onClick={() => router.push('/partituren')}
-                      className="w-full py-3 rounded-xl font-bold text-sm"
-                      style={{ backgroundColor: '#fff', color: '#FF560D' }}>
-                      Kies een partituur →
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          )
-        })()}
-
-        {/* Start oefensessie — los widget */}
-        {rol !== 'leraar' && (
-          <button
-            onClick={() => router.push('/partituren')}
-            className="w-full rounded-2xl overflow-hidden mb-4 shadow-sm text-left transition-transform hover:scale-[1.01]"
-            style={{ backgroundColor: '#0766C6' }}>
-            <div className="p-5 flex items-center justify-between">
-              <div>
-                <p className="text-white font-bold text-base">Start oefensessie</p>
-                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.65)' }}>
-                  Kies een stuk en begin →
+            {/* Eigen partituren */}
+            {recentePartituren.length === 0 ? (
+              <div
+                className="flex-shrink-0 flex items-center justify-center"
+                style={{ width: 160, height: 180, backgroundColor: '#0D1B2A', borderRadius: 20, borderLeft: '5px solid #FF560D' }}
+              >
+                <p className="font-apercu text-caption text-center px-4" style={{ color: '#8FA3B8' }}>
+                  Nog geen lesmateriaal
                 </p>
               </div>
-              <span className="text-3xl text-white opacity-80">▶</span>
-            </div>
-          </button>
-        )}
-
-        {/* Weekkalender + streak — alleen voor student */}
-        {rol !== 'leraar' && (() => {
-          const weekGeleden = new Date(Date.now() - 7 * 86400000).toISOString()
-          const sessiesDezeWeek = recenteSessies.filter(s => s.created_at >= weekGeleden)
-          const totaalSecDezeWeek = sessiesDezeWeek.reduce((a, s) => a + (s.duur || 0), 0)
-          const totaalMinDezeWeek = Math.floor(totaalSecDezeWeek / 60)
-          const aantalDagenGeoefend = weekDagen.filter(d => geoefendeDagen.has(d)).length
-
-          return (
-            <div className="rounded-2xl p-5 mb-4" style={{ backgroundColor: '#fff' }}>
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-sm font-semibold" style={{ color: '#333' }}>Deze week</p>
-                {streak > 0 ? (
-                  <span className="text-sm font-bold px-3 py-1 rounded-full"
-                    style={{ backgroundColor: '#FF560D', color: '#fff' }}>
-                    🔥 {streak} dag{streak !== 1 ? 'en' : ''} op rij
-                  </span>
-                ) : (
-                  <span className="text-sm px-3 py-1 rounded-full"
-                    style={{ backgroundColor: '#F3E7DD', color: '#888' }}>
-                    Nog geen streak
-                  </span>
-                )}
-              </div>
-
-              {/* Dag-cirkels */}
-              <div style={{ display: 'flex', gap: '6px', justifyContent: 'space-between' }}>
-                {weekDagen.map((dag) => {
-                  const geoefend = geoefendeDagen.has(dag)
-                  const isVandaag = dag === new Date().toISOString().slice(0, 10)
-                  const dagNr = new Date(dag).getDay()
-                  const label = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za'][dagNr]
-                  return (
-                    <div key={dag} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flex: 1 }}>
-                      <span style={{ fontSize: '11px', color: '#bbb', fontWeight: 500 }}>{label}</span>
-                      <div style={{
-                        width: '36px', height: '36px', borderRadius: '50%',
-                        backgroundColor: geoefend ? '#0766C6' : '#F3E7DD',
-                        border: isVandaag && !geoefend ? '2px solid #0766C6' : '2px solid transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        color: geoefend ? '#fff' : '#bbb',
-                        fontSize: geoefend ? '14px' : '11px',
-                        fontWeight: 'bold',
-                      }}>
-                        {geoefend ? '✓' : new Date(dag).getDate()}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Week stats */}
-              <div className="grid grid-cols-3 gap-3 mt-4 pt-4" style={{ borderTop: '1px solid #F3E7DD' }}>
-                <div className="text-center">
-                  <p className="text-xl font-bold" style={{ color: '#0766C6' }}>{aantalDagenGeoefend}</p>
-                  <p className="text-xs mt-0.5" style={{ color: '#888' }}>Dag{aantalDagenGeoefend !== 1 ? 'en' : ''} geoefend</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xl font-bold" style={{ color: '#FF560D' }}>{sessiesDezeWeek.length}</p>
-                  <p className="text-xs mt-0.5" style={{ color: '#888' }}>Sessies</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xl font-bold" style={{ color: '#333' }}>
-                    {totaalMinDezeWeek >= 60
-                      ? `${Math.floor(totaalMinDezeWeek / 60)}u${totaalMinDezeWeek % 60 > 0 ? `${totaalMinDezeWeek % 60}m` : ''}`
-                      : `${totaalMinDezeWeek}min`}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: '#888' }}>Oefentijd</p>
-                </div>
-              </div>
-
-              {/* Parcours link */}
-              <button
-                onClick={() => router.push('/parcours')}
-                className="w-full mt-4 py-2.5 rounded-xl text-xs font-semibold"
-                style={{ backgroundColor: '#F3E7DD', color: '#0766C6' }}>
-                Bekijk je volledige parcours →
-              </button>
-            </div>
-          )
-        })()}
-
-        {/* Recente sessies preview — alleen voor student */}
-        {rol !== 'leraar' && recenteSessies.length > 0 && (
-          <div className="rounded-2xl p-5 mb-4" style={{ backgroundColor: '#fff' }}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-sm" style={{ color: '#333' }}>Recente sessies</h2>
-              <button onClick={() => router.push('/sessies')} className="text-sm" style={{ color: '#0766C6' }}>
-                Alle bekijken →
-              </button>
-            </div>
-            <div className="flex flex-col gap-2">
-              {recenteSessies.slice(0, 3).map(sessie => {
-                const titel = sessie.partituren?.titel || 'Onbekende partituur'
-                const tijd = new Date(sessie.created_at).toLocaleDateString('nl-BE', {
-                  day: 'numeric', month: 'short'
-                })
-                return (
-                  <button
-                    key={sessie.id}
-                    onClick={() => router.push(`/sessies/${sessie.id}`)}
-                    className="w-full text-left flex items-center gap-3 p-3 rounded-xl transition-transform hover:scale-[1.01]"
-                    style={{ backgroundColor: '#F3E7DD' }}>
-                    <div className="w-1 self-stretch rounded-full flex-shrink-0"
-                      style={{ backgroundColor: '#0766C6' }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate" style={{ color: '#0766C6' }}>{titel}</p>
-                      <p className="text-xs mt-0.5" style={{ color: '#888' }}>{formatDuur(sessie.duur || 0)}</p>
-                    </div>
-                    <p className="text-xs flex-shrink-0" style={{ color: '#bbb' }}>{tijd}</p>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Recente partituren */}
-        <div className="rounded-2xl p-6 mb-4" style={{ backgroundColor: '#fff' }}>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold" style={{ color: '#333' }}>
-              Recente partituren
-            </h2>
-            <button
-              onClick={() => router.push('/partituren')}
-              className="text-sm"
-              style={{ color: '#0766C6' }}>
-              Alle bekijken →
-            </button>
-          </div>
-
-          {recentePartituren.length === 0 ? (
-            <p className="text-sm" style={{ color: '#888' }}>
-              Nog geen partituren beschikbaar.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {recentePartituren.map((p: any) => (
+            ) : (
+              recentePartituren.map((p) => (
                 <button
                   key={p.id}
                   onClick={() => router.push(`/partituren/${p.id}`)}
-                  className="w-full text-left rounded-2xl overflow-hidden transition-transform hover:scale-[1.01] shadow-sm"
-                  style={{ backgroundColor: '#F3E7DD' }}>
-                  <div className="h-1 w-full" style={{ backgroundColor: '#0766C6' }} />
-                  <div className="p-4">
-                    <p className="font-bold text-sm truncate" style={{ color: '#0766C6' }}>
-                      {p.titel}
+                  className="flex-shrink-0 overflow-hidden active:scale-95 transition-transform duration-100 text-left"
+                  style={{ width: 160, height: 180, backgroundColor: '#0D1B2A', position: 'relative', borderRadius: 20, borderLeft: '5px solid #FF560D' }}
+                >
+                  <div className="absolute inset-0 flex flex-col justify-end p-4">
+                    <div style={{ marginBottom: 12 }}>
+                      <svg width="32" height="22" viewBox="0 0 32 22" fill="none">
+                        <line x1="0" y1="4"  x2="22" y2="4"  stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.7" />
+                        <line x1="0" y1="9"  x2="22" y2="9"  stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.7" />
+                        <line x1="0" y1="14" x2="22" y2="14" stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.7" />
+                        <line x1="0" y1="19" x2="22" y2="19" stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.7" />
+                        <circle cx="27" cy="19" r="3" fill="white" />
+                        <line x1="30" y1="19" x2="30" y2="4" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                    <p className="font-apercu font-bold italic text-white text-body-sm leading-snug line-clamp-2">
+                      &ldquo;{p.titel}&rdquo;
                     </p>
                     {p.componist && (
-                      <p className="text-xs mt-0.5 truncate" style={{ color: '#555' }}>
+                      <p className="font-apercu text-caption mt-0.5 line-clamp-1" style={{ color: '#8FA3B8' }}>
                         {p.componist}
                       </p>
                     )}
-                    <div className="flex items-center gap-2 mt-2 flex-wrap">
-                      {uploaders[p.leraar_id] && (
-                        <span className="text-xs px-2 py-0.5 rounded-full"
-                          style={{ backgroundColor: '#fff', color: '#0766C6' }}>
-                          ✦ {uploaders[p.leraar_id]}
-                        </span>
-                      )}
-                      <span className="text-xs" style={{ color: '#bbb' }}>
-                        {new Date(p.created_at).toLocaleDateString('nl-BE', {
-                          day: 'numeric', month: 'short', year: 'numeric'
-                        })}
-                      </span>
-                    </div>
+                    <p className="font-apercu text-caption mt-0.5" style={{ color: '#FF560D' }}>
+                      Mijn materiaal
+                    </p>
                   </div>
                 </button>
-              ))}
+              ))
+            )}
+
+            {/* Lesmateriaal van collega's */}
+            {[
+              { id: 'c-1', titel: "Knockin' On Heaven's Door", componist: 'Bob Dylan', leraarNaam: "Lukas D'hondt", isOpname: false },
+              { id: 'c-2', titel: 'Nocturne Op. 9 No. 2', componist: 'Frédéric Chopin', leraarNaam: 'H. Jacobs', isOpname: true },
+              { id: 'c-3', titel: "Friday I'm In Love", componist: 'The Cure', leraarNaam: 'G. Jansen', isOpname: false },
+            ].map(item => {
+              const kleur = item.isOpname ? '#FFD100' : '#0766C6'
+              return (
+                <div
+                  key={item.id}
+                  className="flex-shrink-0 overflow-hidden"
+                  style={{ width: 160, height: 180, backgroundColor: '#0D1B2A', borderRadius: 20, borderLeft: `5px solid ${kleur}`, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: 16 }}
+                >
+                  {item.isOpname ? (
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={kleur} strokeWidth="1.8" strokeLinecap="round" style={{ marginBottom: 10 }}>
+                      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                    </svg>
+                  ) : (
+                    <svg width="32" height="22" viewBox="0 0 32 22" fill="none" style={{ marginBottom: 10 }}>
+                      <line x1="0" y1="4" x2="22" y2="4" stroke={kleur} strokeWidth="1.8" strokeLinecap="round" opacity="0.8" />
+                      <line x1="0" y1="9" x2="22" y2="9" stroke={kleur} strokeWidth="1.8" strokeLinecap="round" opacity="0.8" />
+                      <line x1="0" y1="14" x2="22" y2="14" stroke={kleur} strokeWidth="1.8" strokeLinecap="round" opacity="0.8" />
+                      <circle cx="27" cy="19" r="3" fill={kleur} />
+                      <line x1="30" y1="19" x2="30" y2="4" stroke={kleur} strokeWidth="1.8" strokeLinecap="round" />
+                    </svg>
+                  )}
+                  <p className="font-apercu font-bold italic text-white text-body-sm leading-snug line-clamp-2">
+                    &ldquo;{item.titel}&rdquo;
+                  </p>
+                  <p className="font-apercu text-caption mt-0.5 line-clamp-1" style={{ color: '#8FA3B8' }}>
+                    {item.componist}
+                  </p>
+                  <p className="font-apercu text-caption mt-0.5" style={{ color: kleur }}>
+                    {item.leraarNaam}
+                  </p>
+                </div>
+              )
+            })}
+
+          </div>
+        </section>
+
+        {/* Kalender */}
+        <section className="mb-6">
+          <h2 className="section-title mb-3">Kalender</h2>
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-5 px-5">
+            {kalenderDagen.map((dag) => {
+              const bgColor = dag.isVandaag ? '#FFD100' : '#0766C6'
+              const tekstKleur = dag.isVandaag ? '#0D1B2A' : 'white'
+              return (
+                <div
+                  key={dag.iso}
+                  className="flex-shrink-0 flex flex-col items-center justify-center rounded-2xl"
+                  style={{ width: 64, height: 72, backgroundColor: bgColor, color: tekstKleur }}
+                >
+                  <span className="font-apercu text-caption font-bold uppercase tracking-wide">{dag.letter}</span>
+                  <span className="font-apercu font-bold text-heading-md mt-0.5">{dag.nr}</span>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
+        {/* Bottom 2-kolom */}
+        <section className="grid grid-cols-2 gap-3 mb-6">
+          <button
+            onClick={() => router.push('/venster')}
+            className="rounded-3xl overflow-hidden active:scale-95 transition-transform duration-100 text-left"
+            style={{ backgroundColor: '#FF560D', minHeight: 120 }}
+          >
+            <div className="p-4 h-full flex flex-col justify-between">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <path d="M16 2v4M8 2v4M3 10h18" />
+              </svg>
+              <div>
+                <p className="font-apercu font-bold text-white text-body-lg">Recent</p>
+                <p className="font-apercu text-caption" style={{ color: 'rgba(255,255,255,0.75)' }}>Geopend</p>
+              </div>
             </div>
-          )}
-        </div>
+          </button>
 
-        {/* Snelle acties */}
-        <div className="flex flex-col gap-3">
-          {rol === 'leraar' && (
-            <>
-              <button
-                onClick={() => router.push('/venster')}
-                className="w-full py-4 rounded-2xl text-white font-semibold transition-transform hover:scale-[1.02]"
-                style={{ backgroundColor: '#FF560D' }}>
-                Classview — oefenactiviteit studenten →
-              </button>
-              <button
-                onClick={() => router.push('/partituren/nieuw')}
-                className="w-full py-4 rounded-2xl text-white font-semibold transition-transform hover:scale-[1.02]"
-                style={{ backgroundColor: '#0766C6' }}>
-                + Nieuwe partituur uploaden
-              </button>
-            </>
-          )}
-        </div>
+          <button
+            onClick={() => router.push('/partituren')}
+            className="rounded-3xl active:scale-95 transition-transform duration-100 text-left"
+            style={{ backgroundColor: '#FFD100', minHeight: 120 }}
+          >
+            <div className="p-4 h-full flex flex-col justify-between">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0D1B2A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              <div>
+                <p className="font-apercu font-bold text-body-lg" style={{ color: '#0D1B2A' }}>{recentePartituren.length}</p>
+                <p className="font-apercu text-caption" style={{ color: '#0D1B2A' }}>Mijn lesmateriaal</p>
+              </div>
+            </div>
+          </button>
+        </section>
 
+        <BottomNav />
+      </main>
+    )
+  }
+
+  // ===== STUDENT VIEW =====
+  const huidigStuk = recenteSessies.find(s => s.partituur_id && s.partituren)
+
+  return (
+    <main className="page px-page">
+
+      {/* Logo */}
+      <div className="flex justify-center pt-6 pb-5">
+        <Image src="/images/doremio-logo2.png" alt="Doremio" width={120} height={87} priority />
       </div>
+
+      {/* Begroeting */}
+      <div className="mb-6">
+        <p className="font-apercu font-bold text-heading-xl" style={{ color: '#0766C6' }}>
+          Welkom terug,
+        </p>
+        <p className="font-kiro text-display-xl" style={{ color: '#FF560D' }}>
+          {voornaam}
+        </p>
+      </div>
+
+      {/* Primaire CTA-rij */}
+      <div className="flex gap-3 mb-3">
+        <button
+          onClick={() => router.push('/quickplay')}
+          className="flex items-center gap-3 flex-1 rounded-full py-4 px-5 active:scale-95 transition-transform duration-100"
+          style={{ backgroundColor: '#0766C6' }}
+        >
+          <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+              <path d="M5 3l14 9-14 9V3z" />
+            </svg>
+          </div>
+          <span className="font-apercu font-bold text-white text-body-lg leading-tight">
+            Start mijn oefensessie
+          </span>
+        </button>
+
+        <button
+          onClick={() => router.push('/sessies')}
+          className="rounded-full py-4 px-5 font-apercu font-bold text-white text-body-md active:scale-95 transition-transform duration-100 flex-shrink-0"
+          style={{ backgroundColor: '#FF560D' }}
+        >
+          Oefenen{'\n'}& Sessies
+        </button>
+      </div>
+
+      {/* Huidig stuk tag */}
+      {huidigStuk && (
+        <div className="flex items-center gap-2 mb-6">
+          <div
+            className="flex items-center gap-2 rounded-full px-3 py-1.5"
+            style={{ backgroundColor: '#0D1B2A' }}
+          >
+            <span className="font-apercu font-bold text-white text-body-sm truncate max-w-[160px]">
+              &ldquo;{huidigStuk.partituren!.titel}&rdquo;
+              {huidigStuk.partituren!.componist ? ` – ${huidigStuk.partituren!.componist}` : ''}
+            </span>
+            {uploaders[recentePartituren[0]?.leraar_id] && (
+              <span className="font-apercu text-caption flex-shrink-0" style={{ color: '#8FA3B8' }}>
+                {uploaders[recentePartituren[0].leraar_id]}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Nieuw voor jou */}
+      <section className="mb-6">
+        <h2 className="section-title mb-3">Nieuw voor jou</h2>
+        <div className="flex gap-3 overflow-x-auto scrollbar-hide -mx-5 px-5">
+          {recentePartituren.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => router.push(`/partituren/${p.id}`)}
+              className="flex-shrink-0 overflow-hidden active:scale-95 transition-transform duration-100"
+              style={{
+                width: 160,
+                height: 180,
+                backgroundColor: '#0D1B2A',
+                position: 'relative',
+                borderRadius: 20,
+                borderLeft: '5px solid #FF560D',
+              }}
+            >
+              <div className="absolute inset-0 flex flex-col justify-end p-4 text-left">
+                <div style={{ marginBottom: 12 }}>
+                  <svg width="32" height="22" viewBox="0 0 32 22" fill="none">
+                    <line x1="0" y1="4"  x2="22" y2="4"  stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.7" />
+                    <line x1="0" y1="9"  x2="22" y2="9"  stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.7" />
+                    <line x1="0" y1="14" x2="22" y2="14" stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.7" />
+                    <line x1="0" y1="19" x2="22" y2="19" stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.7" />
+                    <circle cx="27" cy="19" r="3" fill="white" />
+                    <line x1="30" y1="19" x2="30" y2="4" stroke="white" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <p className="font-apercu font-bold italic text-white text-body-sm leading-snug line-clamp-2">
+                  &ldquo;{p.titel}&rdquo;
+                </p>
+                {p.componist && (
+                  <p className="font-apercu text-caption mt-0.5 line-clamp-1" style={{ color: '#8FA3B8' }}>
+                    {p.componist}
+                  </p>
+                )}
+                {uploaders[p.leraar_id] && (
+                  <p className="font-apercu text-caption mt-0.5" style={{ color: '#8FA3B8' }}>
+                    {uploaders[p.leraar_id]}
+                  </p>
+                )}
+              </div>
+            </button>
+          ))}
+
+          {/* Achievement placeholder kaart */}
+          <div
+            className="flex-shrink-0 overflow-hidden flex flex-col items-center justify-center gap-2"
+            style={{
+              width: 160,
+              height: 180,
+              backgroundColor: '#0D1B2A',
+              borderRadius: 20,
+              borderLeft: '5px solid #FFD100',
+            }}
+          >
+            <div className="w-12 h-12 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: '#FFD100' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0D1B2A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </div>
+            <p className="font-apercu font-bold text-white text-body-sm text-center px-3">
+              Repetition Queen!
+            </p>
+            <p className="font-apercu text-caption text-center" style={{ color: '#8FA3B8' }}>
+              New achievement
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Kalender */}
+      <section className="mb-6">
+        <h2 className="section-title mb-3">Kalender</h2>
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide -mx-5 px-5">
+          {kalenderDagen.map((dag) => {
+            const isVandaag = dag.isVandaag
+            const bgColor = isVandaag ? '#FFD100' : '#0766C6'
+            const tekstKleur = isVandaag ? '#0D1B2A' : 'white'
+
+            return (
+              <div
+                key={dag.iso}
+                className="flex-shrink-0 flex flex-col items-center justify-center rounded-2xl"
+                style={{
+                  width: 64,
+                  height: 72,
+                  backgroundColor: bgColor,
+                  color: tekstKleur,
+                }}
+              >
+                <span className="font-apercu text-caption font-bold uppercase tracking-wide">
+                  {dag.letter}
+                </span>
+                <span className="font-apercu font-bold text-heading-md mt-0.5">
+                  {dag.nr}
+                </span>
+                {dag.geoefend && (
+                  <div className="w-1.5 h-1.5 rounded-full mt-1"
+                    style={{ backgroundColor: isVandaag ? 'rgba(13,27,42,0.4)' : 'rgba(255,255,255,0.6)' }} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      {/* Partituren + Sessies - 2 kolommen */}
+      <section className="grid grid-cols-2 gap-3 mb-6">
+        <button
+          onClick={() => router.push('/partituren')}
+          className="rounded-3xl overflow-hidden active:scale-95 transition-transform duration-100 text-left"
+          style={{ backgroundColor: '#FF560D', minHeight: 120 }}
+        >
+          <div className="p-4 h-full flex flex-col justify-between">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+              <polyline points="10 9 9 9 8 9" />
+            </svg>
+            <div>
+              <p className="font-apercu font-bold text-white text-body-lg">{recentePartituren.length}</p>
+              <p className="font-apercu text-caption" style={{ color: 'rgba(255,255,255,0.75)' }}>Lesmateriaal</p>
+            </div>
+          </div>
+        </button>
+
+        <button
+          onClick={() => router.push('/sessies')}
+          className="rounded-3xl active:scale-95 transition-transform duration-100 text-left"
+          style={{ backgroundColor: '#FFD100', minHeight: 120 }}
+        >
+          <div className="p-4 h-full flex flex-col justify-between">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0D1B2A" strokeWidth="2" strokeLinecap="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <path d="M16 2v4M8 2v4M3 10h18" />
+            </svg>
+            <div>
+              <p className="font-apercu font-bold text-navy text-body-lg">{aantalSessies}</p>
+              <p className="font-apercu text-caption" style={{ color: '#0D1B2A' }}>Mijn Sessies</p>
+            </div>
+          </div>
+        </button>
+      </section>
+
       <BottomNav />
     </main>
   )
