@@ -24,7 +24,7 @@ function audioBufferNaarWav(buffer: AudioBuffer): Blob {
   return new Blob([ab], { type: 'audio/wav' })
 }
 
-type Stap = 'keuze' | 'verwerken' | 'formulier' | 'audio' | 'overzicht'
+type Stap = 'keuze' | 'verwerken' | 'formulier' | 'audio' | 'overzicht' | 'gelukt'
 type AudioTab = 'metronoom' | 'partituur' | 'track' | 'aanwijzingen'
 type Doelstelling = { id: string; naam: string; duur: string; beschrijving: string; aangevinkt: boolean }
 
@@ -59,6 +59,8 @@ const LABEL_STIJL: React.CSSProperties = { color: '#fff', fontWeight: 700, fontS
 
 export default function NieuwePartituur() {
   const [stap, setStap] = useState<Stap>('keuze')
+  const [nieuwId, setNieuwId] = useState<string | null>(null)
+  const [zichtbaar, setZichtbaar] = useState(false)
   const [bestand, setBestand] = useState<File | null>(null)
   const [isPdf, setIsPdf] = useState(false)
   const [titel, setTitel] = useState('')
@@ -113,6 +115,14 @@ export default function NieuwePartituur() {
       cameraStreamRef.current?.getTracks().forEach(t => t.stop())
     }
   }, [])
+
+  useEffect(() => {
+    if (stap === 'gelukt') {
+      setZichtbaar(false)
+      const t = setTimeout(() => setZichtbaar(true), 50)
+      return () => clearTimeout(t)
+    }
+  }, [stap])
 
   const volgende = () => {
     const i = WIZARD_STAPPEN.indexOf(stap as any)
@@ -317,7 +327,7 @@ export default function NieuwePartituur() {
       }
       if (annotaties.length > 0) await supabase.from('annotaties').insert(annotaties)
 
-      router.push(`/partituren/${p.id}`)
+      setNieuwId(p.id); setStap('gelukt')
     } catch (e: any) { setFout(e.message); setLoading(false) }
   }
 
@@ -353,6 +363,95 @@ export default function NieuwePartituur() {
           Ik heb hulp nodig met lesmateriaal toe te voegen
         </p>
         <BottomNav />
+      </main>
+    )
+  }
+
+  if (stap === 'gelukt') {
+    return (
+      <main style={{ backgroundColor: '#0D1B2A', minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px' }}>
+        <style>{`
+          @keyframes cirkelPop {
+            from { transform: scale(0); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+          }
+        `}</style>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', maxWidth: 400 }}>
+          <p
+            className="font-kiro"
+            style={{
+              color: '#fff',
+              fontSize: 36,
+              textAlign: 'center',
+              marginBottom: 32,
+              opacity: zichtbaar ? 1 : 0,
+              transform: zichtbaar ? 'translateY(0)' : 'translateY(-12px)',
+              transition: 'opacity 0.4s ease 0.4s, transform 0.4s ease 0.4s',
+            }}
+          >
+            Geüpload!
+          </p>
+
+          <div
+            style={{
+              width: 140,
+              height: 140,
+              borderRadius: '50%',
+              backgroundColor: '#22C55E',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              animation: 'cirkelPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+            }}
+          >
+            <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          </div>
+
+          <p
+            className="font-apercu"
+            style={{
+              color: '#8FA3B8',
+              fontSize: 14,
+              textAlign: 'center',
+              marginTop: 24,
+              opacity: zichtbaar ? 1 : 0,
+              transform: zichtbaar ? 'translateY(0)' : 'translateY(12px)',
+              transition: 'opacity 0.4s ease 0.4s, transform 0.4s ease 0.4s',
+            }}
+          >
+            Je lesmateriaal staat klaar voor je studenten.
+          </p>
+
+          <div
+            style={{
+              marginTop: 32,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              width: '100%',
+              opacity: zichtbaar ? 1 : 0,
+              transform: zichtbaar ? 'translateY(0)' : 'translateY(12px)',
+              transition: 'opacity 0.4s ease 0.5s, transform 0.4s ease 0.5s',
+            }}
+          >
+            <button
+              onClick={() => router.push(`/partituren/${nieuwId}`)}
+              className="font-apercu font-bold"
+              style={{ backgroundColor: '#FF560D', borderRadius: 9999, padding: '16px 0', color: '#fff', width: '100%', fontSize: 16 }}
+            >
+              Lesmateriaal bekijken
+            </button>
+            <button
+              onClick={() => router.push('/partituren')}
+              className="font-apercu font-bold"
+              style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 9999, padding: '16px 0', color: '#fff', width: '100%', fontSize: 16 }}
+            >
+              Terug naar overzicht
+            </button>
+          </div>
+        </div>
       </main>
     )
   }

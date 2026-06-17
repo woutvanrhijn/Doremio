@@ -413,30 +413,29 @@ export default function Dashboard() {
             </button>
           ))}
 
-          {/* Achievement placeholder kaart */}
-          <div
-            className="flex-shrink-0 overflow-hidden flex flex-col items-center justify-center gap-2"
-            style={{
-              width: 160,
-              height: 180,
-              backgroundColor: '#0D1B2A',
-              borderRadius: 20,
-              borderLeft: '5px solid #FFD100',
-            }}
-          >
-            <div className="w-12 h-12 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: '#FFD100' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0D1B2A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 6L9 17l-5-5" />
-              </svg>
+          {/* Fictieve medestudenten sessies */}
+          {[
+            { naam: 'Zoë D.', stuk: 'Nocturne Op. 9', duur: '24 min', kleur: '#0766C6' },
+            { naam: 'Noah J.', stuk: 'Canon in D', duur: '18 min', kleur: '#FFD100' },
+          ].map((s) => (
+            <div
+              key={s.naam}
+              className="flex-shrink-0 flex flex-col justify-end p-4"
+              style={{ width: 160, height: 180, backgroundColor: '#0D1B2A', borderRadius: 20, borderLeft: `5px solid ${s.kleur}` }}
+            >
+              <div className="w-8 h-8 rounded-full flex items-center justify-center mb-3"
+                style={{ backgroundColor: s.kleur }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={s.kleur === '#FFD100' ? '#0D1B2A' : 'white'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M5 3l14 9-14 9V3z" />
+                </svg>
+              </div>
+              <p className="font-apercu font-bold text-white text-body-sm leading-snug line-clamp-2 italic">
+                &ldquo;{s.stuk}&rdquo;
+              </p>
+              <p className="font-apercu text-caption mt-1" style={{ color: '#8FA3B8' }}>{s.naam} · {s.duur}</p>
+              <p className="font-apercu text-caption mt-0.5" style={{ color: s.kleur }}>Zojuist geoefend</p>
             </div>
-            <p className="font-apercu font-bold text-white text-body-sm text-center px-3">
-              Repetition Queen!
-            </p>
-            <p className="font-apercu text-caption text-center" style={{ color: '#8FA3B8' }}>
-              New achievement
-            </p>
-          </div>
+          ))}
         </div>
       </section>
 
