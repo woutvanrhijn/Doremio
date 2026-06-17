@@ -1,12 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const admin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-)
-
 function storageSleutelVan(url: string | null): string | null {
   if (!url) return null
   const marker = '/storage/v1/object/public/partituren/'
@@ -15,6 +9,12 @@ function storageSleutelVan(url: string | null): string | null {
 }
 
 export async function DELETE(req: NextRequest) {
+  const admin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+
   const { partituurId, leraarId } = await req.json()
 
   if (!partituurId || !leraarId) {
