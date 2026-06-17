@@ -487,29 +487,115 @@ function AchievementKaart({ kaart }: { kaart: AchievementCard }) {
   )
 }
 
-// ─── Fictieve leraar-items ─────────────────────────────────────────────────────
+// ─── Fictieve feed-items (leraar + studenten klas 1A) ─────────────────────────
+
+const nu = Date.now()
+const uur = 3600000
 
 const FICTIEVE_FEED_ITEMS: FeedCard[] = [
+  // Leraar materiaal
   {
-    type: 'materiaal', id: 'fict-mat-1', leraarId: 'fict-1',
-    leraarNaam: "Lukas D'hondt",
-    datum: new Date(Date.now() - 2 * 86400000).toISOString(),
-    titel: "Knockin' On Heaven's Door", componist: 'Bob Dylan',
-    klasId: null, klasNaam: '2A', isOpname: false,
+    type: 'materiaal', id: 'fict-mat-1', leraarId: 'fict-l1',
+    leraarNaam: "Lucas D'hondt",
+    datum: new Date(nu - 1 * uur).toISOString(),
+    titel: 'Nocturne Op. 9 No. 2', componist: 'Frédéric Chopin',
+    klasId: 'fict-klas-1a', klasNaam: '1A', isOpname: false,
   },
   {
-    type: 'materiaal', id: 'fict-mat-2', leraarId: 'fict-2',
-    leraarNaam: 'H. Jacobs',
-    datum: new Date(Date.now() - 5 * 86400000).toISOString(),
-    titel: "Knockin' On Heaven's Door", componist: 'Bob Dylan',
-    klasId: null, klasNaam: '1A', isOpname: true,
+    type: 'materiaal', id: 'fict-mat-2', leraarId: 'fict-l1',
+    leraarNaam: "Lucas D'hondt",
+    datum: new Date(nu - 26 * uur).toISOString(),
+    titel: 'Canon in D', componist: 'Johann Pachelbel',
+    klasId: 'fict-klas-1a', klasNaam: '1A', isOpname: true,
+  },
+
+  // Studenten klas 1A — Zoë de Wolf
+  {
+    type: 'sessie', id: 'fict-s1', studentId: 'fict-zoe',
+    studentNaam: 'Zoë de Wolf',
+    datum: new Date(nu - 2 * uur).toISOString(),
+    titel: 'Nocturne Op. 9 No. 2', componist: 'Frédéric Chopin',
+    klasId: 'fict-klas-1a', klasNaam: '1A',
+    leraarNaam: "Lucas D'hondt",
+    sessieCount: 8, duur: 1440, bpm: 58, gevoel: 'Goed bezig',
   },
   {
-    type: 'materiaal', id: 'fict-mat-3', leraarId: 'fict-3',
-    leraarNaam: 'G. Jansen',
-    datum: new Date(Date.now() - 10 * 86400000).toISOString(),
-    titel: "Friday I'm In Love", componist: 'The Cure',
-    klasId: null, klasNaam: '3C', isOpname: false,
+    type: 'sessie', id: 'fict-s2', studentId: 'fict-zoe',
+    studentNaam: 'Zoë de Wolf',
+    datum: new Date(nu - 28 * uur).toISOString(),
+    titel: 'Nocturne Op. 9 No. 2', componist: 'Frédéric Chopin',
+    klasId: 'fict-klas-1a', klasNaam: '1A',
+    leraarNaam: "Lucas D'hondt",
+    sessieCount: 7, duur: 1080, bpm: 54, gevoel: 'Oké',
+  },
+
+  // Noah Janssen
+  {
+    type: 'sessie', id: 'fict-s3', studentId: 'fict-noah',
+    studentNaam: 'Noah Janssen',
+    datum: new Date(nu - 5 * uur).toISOString(),
+    titel: 'Canon in D', componist: 'Johann Pachelbel',
+    klasId: 'fict-klas-1a', klasNaam: '1A',
+    leraarNaam: "Lucas D'hondt",
+    sessieCount: 5, duur: 900, bpm: 72, gevoel: 'Super goed!',
+  },
+  {
+    type: 'achievement', id: 'fict-ach1', studentId: 'fict-noah',
+    studentNaam: 'Noah Janssen',
+    datum: new Date(nu - 5.1 * uur).toISOString(),
+    milestone: 5, sessieCount: 5,
+    klasId: 'fict-klas-1a', klasNaam: '1A',
+  },
+
+  // Emma Claes
+  {
+    type: 'sessie', id: 'fict-s4', studentId: 'fict-emma',
+    studentNaam: 'Emma Claes',
+    datum: new Date(nu - 18 * uur).toISOString(),
+    titel: 'Nocturne Op. 9 No. 2', componist: 'Frédéric Chopin',
+    klasId: 'fict-klas-1a', klasNaam: '1A',
+    leraarNaam: "Lucas D'hondt",
+    sessieCount: 3, duur: 720, bpm: 50, gevoel: 'Moeilijk',
+  },
+
+  // Lucas Vermeersch
+  {
+    type: 'sessie', id: 'fict-s5', studentId: 'fict-lucas',
+    studentNaam: 'Lucas Vermeersch',
+    datum: new Date(nu - 22 * uur).toISOString(),
+    titel: 'Canon in D', componist: 'Johann Pachelbel',
+    klasId: 'fict-klas-1a', klasNaam: '1A',
+    leraarNaam: "Lucas D'hondt",
+    sessieCount: 6, duur: 1260, bpm: 68, gevoel: 'Goed bezig',
+  },
+
+  // Noor Willems
+  {
+    type: 'sessie', id: 'fict-s6', studentId: 'fict-noor',
+    studentNaam: 'Noor Willems',
+    datum: new Date(nu - 30 * uur).toISOString(),
+    titel: 'Nocturne Op. 9 No. 2', componist: 'Frédéric Chopin',
+    klasId: 'fict-klas-1a', klasNaam: '1A',
+    leraarNaam: "Lucas D'hondt",
+    sessieCount: 10, duur: 1800, bpm: 60, gevoel: 'Super goed!',
+  },
+  {
+    type: 'achievement', id: 'fict-ach2', studentId: 'fict-noor',
+    studentNaam: 'Noor Willems',
+    datum: new Date(nu - 30.1 * uur).toISOString(),
+    milestone: 10, sessieCount: 10,
+    klasId: 'fict-klas-1a', klasNaam: '1A',
+  },
+
+  // Lena Peeters
+  {
+    type: 'sessie', id: 'fict-s7', studentId: 'fict-lena',
+    studentNaam: 'Lena Peeters',
+    datum: new Date(nu - 48 * uur).toISOString(),
+    titel: 'Canon in D', componist: 'Johann Pachelbel',
+    klasId: 'fict-klas-1a', klasNaam: '1A',
+    leraarNaam: "Lucas D'hondt",
+    sessieCount: 4, duur: 600, bpm: 65, gevoel: 'Goed bezig',
   },
 ]
 
