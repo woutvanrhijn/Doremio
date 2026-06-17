@@ -186,7 +186,7 @@ export default function PracticeStudioPage() {
         style={{ backgroundColor: '#0D1B2A', borderTopLeftRadius: 28, borderTopRightRadius: 28 }}
       >
         {/* Header */}
-        <div className="px-5 pt-5 pb-3 flex-shrink-0 relative z-10">
+        <div className="px-5 pt-5 pb-3 flex-shrink-0 relative z-20" style={{ backgroundColor: '#0D1B2A' }}>
           <div className="flex items-start justify-between mb-2">
             <h2 className="font-kiro text-display-md text-white">Practice Studio:</h2>
             <div className="text-right flex-shrink-0 ml-3 pt-1">

@@ -243,9 +243,10 @@ export default function Studio() {
     return () => { if (timerRef.current) clearInterval(timerRef.current) }
   }, [timerActief])
 
-  const tikMetronoom = () => {
+  const tikMetronoom = async () => {
     if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
     const ctx = audioCtxRef.current
+    if (ctx.state === 'suspended') await ctx.resume()
     const osc = ctx.createOscillator(); const gain = ctx.createGain()
     osc.connect(gain); gain.connect(ctx.destination)
     osc.frequency.value = 880
@@ -515,7 +516,7 @@ export default function Studio() {
           const ltPct = leraarTrackDuur > 0 ? leraarTrackPos / leraarTrackDuur : 0
           return (
             <div style={{ padding: '0 18px 12px', flexShrink: 0 }}>
-              <audio ref={leraarAudioRef} src={partituur.leraar_audio_url}
+              <audio ref={leraarAudioRef} src={partituur.leraar_audio_url} preload="auto" playsInline
                 onTimeUpdate={() => { if (leraarAudioRef.current) setLeraarTrackPos(leraarAudioRef.current.currentTime) }}
                 onLoadedMetadata={() => { if (leraarAudioRef.current) setLeraarTrackDuur(leraarAudioRef.current.duration) }}
                 onEnded={() => setLeraarTrackSpeelt(false)} />
@@ -526,7 +527,7 @@ export default function Studio() {
                   </p>
                 </div>
                 <div style={{ backgroundColor: '#0D1B2A', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 56 }}>
-                  <button onClick={() => { if (!leraarAudioRef.current) return; if (leraarTrackSpeelt) { leraarAudioRef.current.pause(); setLeraarTrackSpeelt(false) } else { leraarAudioRef.current.play(); setLeraarTrackSpeelt(true) } }} style={{ width: 42, height: 42, borderRadius: '50%', backgroundColor: 'transparent', border: '2px solid white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <button onClick={() => { if (!leraarAudioRef.current) return; if (leraarTrackSpeelt) { leraarAudioRef.current.pause(); setLeraarTrackSpeelt(false) } else { leraarAudioRef.current.play().then(() => setLeraarTrackSpeelt(true)).catch(() => {}) } }} style={{ width: 42, height: 42, borderRadius: '50%', backgroundColor: 'transparent', border: '2px solid white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {leraarTrackSpeelt ? <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg> : <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M6 3.5l13 8.5-13 8.5V3.5z"/></svg>}
                   </button>
                 </div>
@@ -726,6 +727,8 @@ export default function Studio() {
                   <audio
                     ref={opnamePlayerRef}
                     src={opnameUrl}
+                    preload="auto"
+                    playsInline
                     onTimeUpdate={() => { if (opnamePlayerRef.current) setOpnamePos(opnamePlayerRef.current.currentTime) }}
                     onLoadedMetadata={() => { if (opnamePlayerRef.current) setOpnameDuur(opnamePlayerRef.current.duration) }}
                     onEnded={() => setOpnameSpeelt(false)}
@@ -751,7 +754,7 @@ export default function Studio() {
                         onClick={() => {
                           if (!opnamePlayerRef.current) return
                           if (opnameSpeelt) { opnamePlayerRef.current.pause(); setOpnameSpeelt(false) }
-                          else { opnamePlayerRef.current.play(); setOpnameSpeelt(true) }
+                          else { opnamePlayerRef.current.play().then(() => setOpnameSpeelt(true)).catch(() => {}) }
                         }}
                         style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 48, height: 48, borderRadius: '50%', backgroundColor: 'white', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       >
@@ -1108,12 +1111,12 @@ export default function Studio() {
                   </svg>
                 </div>
                 <div style={{ backgroundColor: '#0D1B2A', height: 186, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <audio ref={preAudioRef} src={partituur.leraar_audio_url || undefined}
+                  <audio ref={preAudioRef} src={partituur.leraar_audio_url || undefined} preload="auto" playsInline
                     onTimeUpdate={() => { if (preAudioRef.current) setPreSpeel_pos(preAudioRef.current.currentTime) }}
                     onLoadedMetadata={() => { if (preAudioRef.current) setPreSpeel_duur(preAudioRef.current.duration) }}
                     onEnded={() => setPreSpeel_speelt(false)} />
                   <button
-                    onClick={() => { if (!preAudioRef.current) return; if (preSpeel_speelt) { preAudioRef.current.pause(); setPreSpeel_speelt(false) } else { preAudioRef.current.play(); setPreSpeel_speelt(true) } }}
+                    onClick={() => { if (!preAudioRef.current) return; if (preSpeel_speelt) { preAudioRef.current.pause(); setPreSpeel_speelt(false) } else { preAudioRef.current.play().then(() => setPreSpeel_speelt(true)).catch(() => {}) } }}
                     style={{ width: 66, height: 66, borderRadius: '50%', backgroundColor: 'transparent', border: '2.5px solid white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   >
                     {preSpeel_speelt
