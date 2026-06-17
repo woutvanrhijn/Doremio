@@ -53,9 +53,12 @@ const FICTIEVE_STUK: Record<string, string> = {
 }
 
 const FICTIEVE_STUDENT_SESSIES = [
-  { naam: 'Amber Claes', stuk: 'Nocturne Op. 9 No. 2', datum: 'Gisteren', duur: '22min', kleur: STUDENT_KLEUREN[0] },
-  { naam: 'Thomas Peeters', stuk: "Say It Ain't So", datum: '2 dagen geleden', duur: '18min', kleur: STUDENT_KLEUREN[1] },
-  { naam: 'Fien De Smedt', stuk: 'La Vie en Rose', datum: '3 dagen geleden', duur: '31min', kleur: STUDENT_KLEUREN[4] },
+  { id: 'fict-s-0', naam: 'Zoë de Wolf', stuk: 'Nocturne Op. 9 No. 2', componist: 'Chopin', datum: new Date(Date.now() - 1 * 3600000), duur: '24min', kleur: STUDENT_KLEUREN[0] },
+  { id: 'fict-s-1', naam: 'Noah Janssen', stuk: 'Canon in D', componist: 'Pachelbel', datum: new Date(Date.now() - 5 * 3600000), duur: '18min', kleur: STUDENT_KLEUREN[1] },
+  { id: 'fict-s-2', naam: 'Emma Claes', stuk: 'Nocturne Op. 9 No. 2', componist: 'Chopin', datum: new Date(Date.now() - 12 * 3600000), duur: '20min', kleur: STUDENT_KLEUREN[2] },
+  { id: 'fict-s-3', naam: 'Lucas Vermeersch', stuk: 'Canon in D', componist: 'Pachelbel', datum: new Date(Date.now() - 25 * 3600000), duur: '15min', kleur: STUDENT_KLEUREN[3] },
+  { id: 'fict-s-4', naam: 'Noor Willems', stuk: 'Nocturne Op. 9 No. 2', componist: 'Chopin', datum: new Date(Date.now() - 36 * 3600000), duur: '28min', kleur: STUDENT_KLEUREN[4] },
+  { id: 'fict-s-5', naam: 'Lena Peeters', stuk: 'Canon in D', componist: 'Pachelbel', datum: new Date(Date.now() - 48 * 3600000), duur: '21min', kleur: STUDENT_KLEUREN[5] },
 ]
 
 function formatDuur(s: number): string {
@@ -99,7 +102,7 @@ export default function ClassviewPage() {
     const init: Record<string, FeedInteractie> = {}
     const alleIds = [
       ...FICTIEVE_LERAAR_FEED_INIT.map(f => f.id),
-      ...FICTIEVE_STUDENT_SESSIES.map((_, i) => `fict-student-${i}`),
+      ...FICTIEVE_STUDENT_SESSIES.map(f => f.id),
     ]
     alleIds.forEach(id => { init[id] = { gelikt: false, opgeslagen: false, commentOpen: false } })
     return init
@@ -270,6 +273,18 @@ export default function ClassviewPage() {
     ? (alleStudentenCombined.find(s => s.id === geselecteerdeStudentId) ?? null)
     : null
 
+  // Gecombineerde gesorteerde feed
+  type GecombineerdFeedItem =
+    | { type: 'leraar'; id: string; datum: number; data: typeof FICTIEVE_LERAAR_FEED_INIT[0] }
+    | { type: 'sessie'; id: string; datum: number; data: SessieFeed }
+    | { type: 'fictief'; id: string; datum: number; data: typeof FICTIEVE_STUDENT_SESSIES[0] }
+
+  const gecombineerdeFeed: GecombineerdFeedItem[] = [
+    ...leraarFeed.map(f => ({ type: 'leraar' as const, id: f.id, datum: f.datum.getTime(), data: f })),
+    ...sessiesFeed.slice(0, 5).map(s => ({ type: 'sessie' as const, id: s.id, datum: new Date(s.created_at).getTime(), data: s })),
+    ...FICTIEVE_STUDENT_SESSIES.map(f => ({ type: 'fictief' as const, id: f.id, datum: f.datum.getTime(), data: f })),
+  ].sort((a, b) => b.datum - a.datum)
+
   return (
     <main style={{ backgroundColor: '#0D1B2A', minHeight: '100dvh', paddingBottom: 'calc(72px + env(safe-area-inset-bottom, 0px))' }}>
 
@@ -341,252 +356,235 @@ export default function ClassviewPage() {
             </div>
           </div>
 
-          {/* Feed cards */}
+          {/* Feed cards — gesorteerd op datum */}
           <div className="px-5" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-            {/* Lesmateriaal kaarten — ORANJE of GEEL (opname) */}
-            {leraarFeed.map(item => {
-              const kleur = item.isOpname ? '#FFD100' : '#FF560D'
-              const kleurBg = item.isOpname ? 'rgba(255,209,0,0.1)' : 'rgba(255,86,13,0.1)'
+            {gecombineerdeFeed.map(item => {
               const inter = feedInteractie[item.id] ?? { gelikt: false, opgeslagen: false, commentOpen: false }
               const toggle = (key: keyof FeedInteractie) => setFeedInteractie(prev => ({
                 ...prev, [item.id]: { ...(prev[item.id] ?? { gelikt: false, opgeslagen: false, commentOpen: false }), [key]: !inter[key] }
               }))
-              return (
-                <div key={item.id} style={{ borderRadius: 16, overflow: 'hidden', borderLeft: `4px solid ${kleur}` }}>
-                  {/* Header strip */}
-                  <div style={{ backgroundColor: kleurBg, padding: '8px 14px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {item.isOpname ? (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kleur} strokeWidth="2.5" strokeLinecap="round">
-                          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                        </svg>
-                      ) : (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kleur} strokeWidth="2.5" strokeLinecap="round">
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
-                        </svg>
-                      )}
-                      <span className="font-apercu font-bold" style={{ fontSize: 10, color: kleur, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                        {item.isOpname ? 'Opname · Lesmateriaal' : 'Lesmateriaal'}
-                      </span>
-                    </div>
-                    {item.isOpname && (
-                      <span className="font-apercu font-bold" style={{ fontSize: 10, color: kleur, backgroundColor: 'rgba(255,209,0,0.2)', borderRadius: 20, padding: '2px 8px' }}>
-                        Opname
-                      </span>
-                    )}
-                  </div>
 
-                  <div style={{ backgroundColor: 'rgba(255,255,255,0.04)', padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {/* Info rij */}
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                      <div style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: kleur, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {item.isOpname ? (
-                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
+              if (item.type === 'leraar') {
+                const f = item.data
+                const kleur = f.isOpname ? '#FFD100' : '#FF560D'
+                const kleurBg = f.isOpname ? 'rgba(255,209,0,0.1)' : 'rgba(255,86,13,0.1)'
+                return (
+                  <div key={item.id} style={{ borderRadius: 16, overflow: 'hidden', borderLeft: `4px solid ${kleur}` }}>
+                    <div style={{ backgroundColor: kleurBg, padding: '8px 14px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {f.isOpname ? (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kleur} strokeWidth="2.5" strokeLinecap="round">
                             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                           </svg>
                         ) : (
-                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={kleur} strokeWidth="2.5" strokeLinecap="round">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
                           </svg>
                         )}
+                        <span className="font-apercu font-bold" style={{ fontSize: 10, color: kleur, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                          {f.isOpname ? 'Opname · Lesmateriaal' : 'Lesmateriaal'}
+                        </span>
                       </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p className="font-apercu" style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: 0 }}>
-                          {item.leraarNaam} · Klas {item.klasNaam} · {item.datum.toLocaleDateString('nl-BE', { day: 'numeric', month: 'short' })}
-                        </p>
-                        <p className="font-apercu font-bold" style={{ fontSize: 14, color: '#fff', margin: '4px 0 0', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          &ldquo;{item.titel}&rdquo;
-                          {item.componist && <span style={{ fontWeight: 500, fontStyle: 'normal', color: 'rgba(255,255,255,0.6)' }}> {item.componist}</span>}
-                        </p>
-                      </div>
+                      {f.isOpname && (
+                        <span className="font-apercu font-bold" style={{ fontSize: 10, color: kleur, backgroundColor: 'rgba(255,209,0,0.2)', borderRadius: 20, padding: '2px 8px' }}>
+                          Opname
+                        </span>
+                      )}
                     </div>
 
-                    {/* Actie knoppen: Opslaan, Liken, Commenten, Bewerken */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <div style={{ display: 'flex', gap: 2 }}>
-                        {/* Opslaan */}
-                        <button onClick={() => toggle('opgeslagen')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: inter.opgeslagen ? 'rgba(255,209,0,0.12)' : 'transparent' }}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill={inter.opgeslagen ? '#FFD100' : 'none'} stroke={inter.opgeslagen ? '#FFD100' : 'rgba(255,255,255,0.5)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                    <div style={{ backgroundColor: 'rgba(255,255,255,0.04)', padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                        <div style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: kleur, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {f.isOpname ? (
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
+                              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                            </svg>
+                          ) : (
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                            </svg>
+                          )}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p className="font-apercu" style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: 0 }}>
+                            {f.leraarNaam} · Klas {f.klasNaam} · {f.datum.toLocaleDateString('nl-BE', { day: 'numeric', month: 'short' })}
+                          </p>
+                          <p className="font-apercu font-bold" style={{ fontSize: 14, color: '#fff', margin: '4px 0 0', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            &ldquo;{f.titel}&rdquo;
+                            {f.componist && <span style={{ fontWeight: 500, fontStyle: 'normal', color: 'rgba(255,255,255,0.6)' }}> {f.componist}</span>}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', gap: 2 }}>
+                          <button onClick={() => toggle('opgeslagen')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: inter.opgeslagen ? 'rgba(255,209,0,0.12)' : 'transparent' }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill={inter.opgeslagen ? '#FFD100' : 'none'} stroke={inter.opgeslagen ? '#FFD100' : 'rgba(255,255,255,0.5)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                            </svg>
+                            <span className="font-apercu font-bold" style={{ fontSize: 11, color: inter.opgeslagen ? '#FFD100' : 'rgba(255,255,255,0.5)' }}>Opslaan</span>
+                          </button>
+                          <button onClick={() => toggle('gelikt')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: inter.gelikt ? 'rgba(255,86,13,0.12)' : 'transparent' }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill={inter.gelikt ? '#FF560D' : 'none'} stroke={inter.gelikt ? '#FF560D' : 'rgba(255,255,255,0.5)'} strokeWidth="2" strokeLinecap="round">
+                              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                            </svg>
+                          </button>
+                          <button onClick={() => toggle('commentOpen')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: inter.commentOpen ? 'rgba(255,255,255,0.08)' : 'transparent' }}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                            </svg>
+                            <span className="font-apercu font-bold" style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Reageren</span>
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.06)' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                            <span className="font-apercu font-bold" style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Bewerken</span>
+                          </button>
+                          {f.isEigen && (
+                            <button
+                              onClick={() => setVerwijderBevestig(verwijderBevestig === item.id ? null : item.id)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: verwijderBevestig === item.id ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.06)' }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={verwijderBevestig === item.id ? '#EF4444' : 'rgba(255,255,255,0.5)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                              </svg>
+                              <span className="font-apercu font-bold" style={{ fontSize: 11, color: verwijderBevestig === item.id ? '#EF4444' : 'rgba(255,255,255,0.5)' }}>
+                                Verwijderen
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {verwijderBevestig === item.id && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}>
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round">
+                            <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                           </svg>
-                          <span className="font-apercu font-bold" style={{ fontSize: 11, color: inter.opgeslagen ? '#FFD100' : 'rgba(255,255,255,0.5)' }}>Opslaan</span>
+                          <span className="font-apercu" style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', flex: 1 }}>
+                            Lesmateriaal verwijderen?
+                          </span>
+                          <button
+                            onClick={() => { setLeraarFeed(prev => prev.filter(fItem => fItem.id !== item.id)); setVerwijderBevestig(null) }}
+                            style={{ backgroundColor: '#EF4444', border: 'none', cursor: 'pointer', borderRadius: 16, padding: '6px 14px', fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 12, color: '#fff' }}
+                          >
+                            Ja
+                          </button>
+                          <button
+                            onClick={() => setVerwijderBevestig(null)}
+                            style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: 'none', cursor: 'pointer', borderRadius: 16, padding: '6px 14px', fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 12, color: 'rgba(255,255,255,0.6)' }}
+                          >
+                            Nee
+                          </button>
+                        </div>
+                      )}
+
+                      {inter.commentOpen && (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                          <input
+                            type="text"
+                            placeholder="Schrijf een reactie..."
+                            value={feedCommentTekst[item.id] ?? ''}
+                            onChange={e => setFeedCommentTekst(prev => ({ ...prev, [item.id]: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter') { setFeedCommentTekst(prev => ({ ...prev, [item.id]: '' })); toggle('commentOpen') } }}
+                            autoFocus
+                            style={{ flex: 1, border: 'none', outline: 'none', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 20, padding: '8px 14px', fontFamily: 'var(--font-apercu)', fontSize: 13, color: '#fff' }}
+                          />
+                          <button
+                            onClick={() => { setFeedCommentTekst(prev => ({ ...prev, [item.id]: '' })); toggle('commentOpen') }}
+                            style={{ backgroundColor: kleur, border: 'none', cursor: 'pointer', borderRadius: 20, padding: '8px 16px', fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 12, color: f.isOpname ? '#0D1B2A' : '#fff', flexShrink: 0 }}
+                          >
+                            Stuur
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              }
+
+              if (item.type === 'sessie') {
+                const sessie = item.data
+                const student = profielMap[sessie.student_id]
+                const naam = student?.naam ?? 'Student'
+                const datum = new Date(sessie.created_at).toLocaleDateString('nl-BE', { day: 'numeric', month: 'short' })
+                const duurStr = formatDuur(sessie.duur || 0)
+                return (
+                  <div key={item.id} style={{ borderRadius: 16, overflow: 'hidden', borderLeft: '4px solid #0766C6' }}>
+                    <div style={{ backgroundColor: 'rgba(7,102,198,0.12)', padding: '8px 14px 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0766C6" strokeWidth="2.5" strokeLinecap="round">
+                        <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
+                      </svg>
+                      <span className="font-apercu font-bold" style={{ fontSize: 10, color: '#0766C6', letterSpacing: 0.5, textTransform: 'uppercase' }}>Oefensessie</span>
+                    </div>
+                    <div style={{ backgroundColor: 'rgba(255,255,255,0.04)', padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                        <div style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: '#0766C6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
+                            <circle cx="12" cy="8" r="4" /><path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+                          </svg>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p className="font-apercu font-bold" style={{ fontSize: 13, color: '#fff', margin: 0 }}>{naam}</p>
+                          <p className="font-apercu" style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: '2px 0 0' }}>{datum} · {duurStr}</p>
+                          {sessie.partituren?.titel && (
+                            <p className="font-apercu font-bold" style={{ fontSize: 14, color: '#fff', margin: '4px 0 0', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              &ldquo;{sessie.partituren.titel}&rdquo;
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 2 }}>
+                        <button onClick={() => router.push(`/sessies/${sessie.id}`)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: 'rgba(7,102,198,0.15)' }}>
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0766C6" strokeWidth="2" strokeLinecap="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+                          </svg>
+                          <span className="font-apercu font-bold" style={{ fontSize: 11, color: '#0766C6' }}>Bekijken</span>
                         </button>
-                        {/* Liken */}
                         <button onClick={() => toggle('gelikt')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: inter.gelikt ? 'rgba(255,86,13,0.12)' : 'transparent' }}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill={inter.gelikt ? '#FF560D' : 'none'} stroke={inter.gelikt ? '#FF560D' : 'rgba(255,255,255,0.5)'} strokeWidth="2" strokeLinecap="round">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill={inter.gelikt ? '#FF560D' : 'none'} stroke={inter.gelikt ? '#FF560D' : 'rgba(255,255,255,0.5)'} strokeWidth="2" strokeLinecap="round">
                             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                           </svg>
                         </button>
-                        {/* Commenten */}
                         <button onClick={() => toggle('commentOpen')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: inter.commentOpen ? 'rgba(255,255,255,0.08)' : 'transparent' }}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                           </svg>
                           <span className="font-apercu font-bold" style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Reageren</span>
                         </button>
                       </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {/* Bewerken */}
-                        <button style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.06)' }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                          <span className="font-apercu font-bold" style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Bewerken</span>
-                        </button>
-                        {/* Verwijderen — enkel voor eigen lesmateriaal */}
-                        {item.isEigen && (
+                      {inter.commentOpen && (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                          <input
+                            type="text"
+                            placeholder="Schrijf een reactie..."
+                            value={feedCommentTekst[item.id] ?? ''}
+                            onChange={e => setFeedCommentTekst(prev => ({ ...prev, [item.id]: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter') { setFeedCommentTekst(prev => ({ ...prev, [item.id]: '' })); toggle('commentOpen') } }}
+                            autoFocus
+                            style={{ flex: 1, border: 'none', outline: 'none', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 20, padding: '8px 14px', fontFamily: 'var(--font-apercu)', fontSize: 13, color: '#fff' }}
+                          />
                           <button
-                            onClick={() => setVerwijderBevestig(verwijderBevestig === item.id ? null : item.id)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: verwijderBevestig === item.id ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.06)' }}
+                            onClick={() => { setFeedCommentTekst(prev => ({ ...prev, [item.id]: '' })); toggle('commentOpen') }}
+                            style={{ backgroundColor: '#0766C6', border: 'none', cursor: 'pointer', borderRadius: 20, padding: '8px 16px', fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 12, color: '#fff', flexShrink: 0 }}
                           >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={verwijderBevestig === item.id ? '#EF4444' : 'rgba(255,255,255,0.5)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                            </svg>
-                            <span className="font-apercu font-bold" style={{ fontSize: 11, color: verwijderBevestig === item.id ? '#EF4444' : 'rgba(255,255,255,0.5)' }}>
-                              Verwijderen
-                            </span>
+                            Stuur
                           </button>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
-
-                    {/* Bevestiging verwijderen */}
-                    {verwijderBevestig === item.id && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12, backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2" strokeLinecap="round">
-                          <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-                        </svg>
-                        <span className="font-apercu" style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', flex: 1 }}>
-                          Lesmateriaal verwijderen?
-                        </span>
-                        <button
-                          onClick={() => { setLeraarFeed(prev => prev.filter(f => f.id !== item.id)); setVerwijderBevestig(null) }}
-                          style={{ backgroundColor: '#EF4444', border: 'none', cursor: 'pointer', borderRadius: 16, padding: '6px 14px', fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 12, color: '#fff' }}
-                        >
-                          Ja
-                        </button>
-                        <button
-                          onClick={() => setVerwijderBevestig(null)}
-                          style={{ backgroundColor: 'rgba(255,255,255,0.08)', border: 'none', cursor: 'pointer', borderRadius: 16, padding: '6px 14px', fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 12, color: 'rgba(255,255,255,0.6)' }}
-                        >
-                          Nee
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Comment input */}
-                    {inter.commentOpen && (
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                        <input
-                          type="text"
-                          placeholder="Schrijf een reactie..."
-                          value={feedCommentTekst[item.id] ?? ''}
-                          onChange={e => setFeedCommentTekst(prev => ({ ...prev, [item.id]: e.target.value }))}
-                          onKeyDown={e => { if (e.key === 'Enter') { setFeedCommentTekst(prev => ({ ...prev, [item.id]: '' })); toggle('commentOpen') } }}
-                          autoFocus
-                          style={{ flex: 1, border: 'none', outline: 'none', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 20, padding: '8px 14px', fontFamily: 'var(--font-apercu)', fontSize: 13, color: '#fff' }}
-                        />
-                        <button
-                          onClick={() => { setFeedCommentTekst(prev => ({ ...prev, [item.id]: '' })); toggle('commentOpen') }}
-                          style={{ backgroundColor: kleur, border: 'none', cursor: 'pointer', borderRadius: 20, padding: '8px 16px', fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 12, color: item.isOpname ? '#0D1B2A' : '#fff', flexShrink: 0 }}
-                        >
-                          Stuur
-                        </button>
-                      </div>
-                    )}
                   </div>
-                </div>
-              )
-            })}
+                )
+              }
 
-            {/* Echte studentsessies — BLAUW */}
-            {sessiesFeed.slice(0, 5).map(sessie => {
-              const student = profielMap[sessie.student_id]
-              const naam = student?.naam ?? 'Student'
-              const datum = new Date(sessie.created_at).toLocaleDateString('nl-BE', { day: 'numeric', month: 'short' })
-              const duurStr = formatDuur(sessie.duur || 0)
-              const inter = feedInteractie[sessie.id] ?? { gelikt: false, opgeslagen: false, commentOpen: false }
-              const toggle = (key: keyof FeedInteractie) => setFeedInteractie(prev => ({
-                ...prev, [sessie.id]: { ...(prev[sessie.id] ?? { gelikt: false, opgeslagen: false, commentOpen: false }), [key]: !inter[key] }
-              }))
+              // type === 'fictief'
+              const f = item.data
+              const datumStr = f.datum.toLocaleDateString('nl-BE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
               return (
-                <div key={sessie.id} style={{ borderRadius: 16, overflow: 'hidden', borderLeft: '4px solid #0766C6' }}>
-                  <div style={{ backgroundColor: 'rgba(7,102,198,0.12)', padding: '8px 14px 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0766C6" strokeWidth="2.5" strokeLinecap="round">
-                      <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
-                    </svg>
-                    <span className="font-apercu font-bold" style={{ fontSize: 10, color: '#0766C6', letterSpacing: 0.5, textTransform: 'uppercase' }}>Oefensessie</span>
-                  </div>
-                  <div style={{ backgroundColor: 'rgba(255,255,255,0.04)', padding: '10px 14px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                      <div style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: '#0766C6', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
-                          <circle cx="12" cy="8" r="4" /><path d="M6 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
-                        </svg>
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p className="font-apercu font-bold" style={{ fontSize: 13, color: '#fff', margin: 0 }}>{naam}</p>
-                        <p className="font-apercu" style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: '2px 0 0' }}>{datum} · {duurStr}</p>
-                        {sessie.partituren?.titel && (
-                          <p className="font-apercu font-bold" style={{ fontSize: 14, color: '#fff', margin: '4px 0 0', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            &ldquo;{sessie.partituren.titel}&rdquo;
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 2 }}>
-                      <button onClick={() => router.push(`/sessies/${sessie.id}`)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: 'rgba(7,102,198,0.15)' }}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0766C6" strokeWidth="2" strokeLinecap="round">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
-                        </svg>
-                        <span className="font-apercu font-bold" style={{ fontSize: 11, color: '#0766C6' }}>Bekijken</span>
-                      </button>
-                      <button onClick={() => toggle('gelikt')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: inter.gelikt ? 'rgba(255,86,13,0.12)' : 'transparent' }}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill={inter.gelikt ? '#FF560D' : 'none'} stroke={inter.gelikt ? '#FF560D' : 'rgba(255,255,255,0.5)'} strokeWidth="2" strokeLinecap="round">
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                        </svg>
-                      </button>
-                      <button onClick={() => toggle('commentOpen')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5, backgroundColor: inter.commentOpen ? 'rgba(255,255,255,0.08)' : 'transparent' }}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                        </svg>
-                        <span className="font-apercu font-bold" style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>Reageren</span>
-                      </button>
-                    </div>
-                    {inter.commentOpen && (
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                        <input
-                          type="text"
-                          placeholder="Schrijf een reactie..."
-                          value={feedCommentTekst[sessie.id] ?? ''}
-                          onChange={e => setFeedCommentTekst(prev => ({ ...prev, [sessie.id]: e.target.value }))}
-                          onKeyDown={e => { if (e.key === 'Enter') { setFeedCommentTekst(prev => ({ ...prev, [sessie.id]: '' })); toggle('commentOpen') } }}
-                          autoFocus
-                          style={{ flex: 1, border: 'none', outline: 'none', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 20, padding: '8px 14px', fontFamily: 'var(--font-apercu)', fontSize: 13, color: '#fff' }}
-                        />
-                        <button
-                          onClick={() => { setFeedCommentTekst(prev => ({ ...prev, [sessie.id]: '' })); toggle('commentOpen') }}
-                          style={{ backgroundColor: '#0766C6', border: 'none', cursor: 'pointer', borderRadius: 20, padding: '8px 16px', fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 12, color: '#fff', flexShrink: 0 }}
-                        >
-                          Stuur
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-
-            {/* Fictieve studentsessies — BLAUW */}
-            {sessiesFeed.length === 0 && FICTIEVE_STUDENT_SESSIES.map((f, i) => {
-              const id = `fict-student-${i}`
-              const inter = feedInteractie[id] ?? { gelikt: false, opgeslagen: false, commentOpen: false }
-              const toggle = (key: keyof FeedInteractie) => setFeedInteractie(prev => ({
-                ...prev, [id]: { ...(prev[id] ?? { gelikt: false, opgeslagen: false, commentOpen: false }), [key]: !inter[key] }
-              }))
-              return (
-                <div key={id} style={{ borderRadius: 16, overflow: 'hidden', borderLeft: '4px solid #0766C6' }}>
+                <div key={item.id} style={{ borderRadius: 16, overflow: 'hidden', borderLeft: '4px solid #0766C6' }}>
                   <div style={{ backgroundColor: 'rgba(7,102,198,0.12)', padding: '8px 14px 6px', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0766C6" strokeWidth="2.5" strokeLinecap="round">
                       <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
@@ -602,8 +600,11 @@ export default function ClassviewPage() {
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p className="font-apercu font-bold" style={{ fontSize: 13, color: '#fff', margin: 0 }}>{f.naam}</p>
-                        <p className="font-apercu" style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: '2px 0 0' }}>{f.datum} · {f.duur}</p>
-                        <p className="font-apercu font-bold" style={{ fontSize: 14, color: '#fff', margin: '4px 0 0', fontStyle: 'italic' }}>&ldquo;{f.stuk}&rdquo;</p>
+                        <p className="font-apercu" style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', margin: '2px 0 0' }}>{datumStr} · {f.duur}</p>
+                        <p className="font-apercu font-bold" style={{ fontSize: 14, color: '#fff', margin: '4px 0 0', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          &ldquo;{f.stuk}&rdquo;
+                          <span style={{ fontWeight: 500, fontStyle: 'normal', color: 'rgba(255,255,255,0.6)' }}> {f.componist}</span>
+                        </p>
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 2 }}>
@@ -630,14 +631,14 @@ export default function ClassviewPage() {
                         <input
                           type="text"
                           placeholder="Schrijf een reactie..."
-                          value={feedCommentTekst[id] ?? ''}
-                          onChange={e => setFeedCommentTekst(prev => ({ ...prev, [id]: e.target.value }))}
-                          onKeyDown={e => { if (e.key === 'Enter') { setFeedCommentTekst(prev => ({ ...prev, [id]: '' })); toggle('commentOpen') } }}
+                          value={feedCommentTekst[item.id] ?? ''}
+                          onChange={e => setFeedCommentTekst(prev => ({ ...prev, [item.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') { setFeedCommentTekst(prev => ({ ...prev, [item.id]: '' })); toggle('commentOpen') } }}
                           autoFocus
                           style={{ flex: 1, border: 'none', outline: 'none', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 20, padding: '8px 14px', fontFamily: 'var(--font-apercu)', fontSize: 13, color: '#fff' }}
                         />
                         <button
-                          onClick={() => { setFeedCommentTekst(prev => ({ ...prev, [id]: '' })); toggle('commentOpen') }}
+                          onClick={() => { setFeedCommentTekst(prev => ({ ...prev, [item.id]: '' })); toggle('commentOpen') }}
                           style={{ backgroundColor: '#0766C6', border: 'none', cursor: 'pointer', borderRadius: 20, padding: '8px 16px', fontFamily: 'var(--font-apercu)', fontWeight: 700, fontSize: 12, color: '#fff', flexShrink: 0 }}
                         >
                           Stuur
@@ -648,7 +649,6 @@ export default function ClassviewPage() {
                 </div>
               )
             })}
-
           </div>
         </>
       ) : (
